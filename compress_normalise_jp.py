@@ -8,41 +8,45 @@ imp.reload(normalise_mecab)
 def main0(StdJpTxtFP,DicLoc,StdModelLoc,ExemplarFP=None,FreqWdFP=None):
     # first do the compression on dic and corpus
     #CmpDicFPs=build_compressed_dic(StdModelLoc)
-    CmpDicFPs=glob.glob(os.path.join(DicLoc,'compressed','*.csv'))
-    CmpMecabFP=myModule.change_stem(myModule.change_stem(StdJpTxtFP,'.std',AddOrRemove='remove'),'.compressed')
-    myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,StdModelLoc,CmpMecabFP],{}))
+
+    DicFP=os.path.join(DicLoc,'inflecting.csv')
+    CmpDicFP=myModule.change_stem(DicFP,'.compressed',AddOrRemove='add')
+    Ret=myModule.ask_filenoexist_execute(CmpDicFP,compress_inflecting.main0,([DicFP],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':0}))
+    FreshlyDoneP=True if Ret is None else False
     
+    CmpMecabFP=myModule.change_ext(myModule.change_stem(StdJpTxtFP,'.compressed',AddOrRemove='add'),'mecab')
+    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,StdModelLoc,CmpMecabFP],{}),DefaultReuse=not FreshlyDoneP)
+
     # do normalisation of the corpus
     FinalMecabFP=myModule.change_stem(CmpMecabFP,'.normed')
     ExemplarFP=os.path.join(DicLoc,'compressed','exemplars.txt') if not ExemplarFP else ExemplarFP
     FreqWdFP=os.path.join(os.path.dirname(StdJpTxtFP),'freqwds.txt') if not FreqWdFP else FreqWdFP
-    normalise_mecab.main0(CmpDicFPs,[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,CorpusOnly=True,UnnormalisableMarkP=True)
+    normalise_mecab.main0([CmpDicFP],[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,CorpusOnly=True,UnnormalisableMarkP=True)
     # do another mecab parsing with a compressed model
 #    do_mecab_parse(GluedMecabFP,CNModelLoc,OutFP=FinalMecabFP)
 
 def do_mecab_parse(InFP,ModelDir,OutFP,WakatiOnly=False):
     Wakati='' if not WakatiOnly else '-o wakati'
     Cmd=' '.join(['mecab -d',Wakati,ModelDir,InFP,'>', OutFP])
-    Proc=subprocess.Popen(Cmd,shell=True)
-    Proc.communicate()
+    Proc=subprocess.Popen(Cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    (StdOut,StdErr)=Proc.communicate()
+    Code=Proc.returncode
+    SuccessP=True if Code==0 else False
 
-def build_compressed_dic(StdModelLoc):
-    
-    StdDicFP=os.path.join(StdModelLoc,'inflecting.csv')
-    CmpDicDir=os.path.join(os.path.dirname(StdDicFP),'compressed')
-    if not os.path.isdir(CmpDicDir):
-        os.makedirs(CmpDicDir)
-    CmpDicFN=os.path.basename(StdDicFP)
-    CmpDicFN=myModule.change_stem(os.path.basename(StdDicFP),'.compressed')
-    CmpDicFP=os.path.join(CmpDicDir,CmpDicFN)
-    
-    compress_inflecting.main0(StdDicFP,CorpusOrDic='dic',OutFP=CmpDicFP)
-    return CmpDicFP
+    return SuccessP,StdOut,StdErr
+
 
 def build_compressed_corpus(StdJpTxtFP,StdModelLoc,CmpMecabFP):
     # do mecab parsing with the standard text
-    StdMecabFP=StdJpTxtFP+'.std.mecab'
-    do_mecab_parse(StdJpTxtFP,StdModelLoc,OutFP=StdMecabFP)
+    StdMecabFP=myModule.change_ext(StdJpTxtFP,'mecab')
+    SuccessP,StdOut,StdErr=do_mecab_parse(StdJpTxtFP,StdModelLoc,OutFP=StdMecabFP)
+    if not SuccessP:
+        print('\nmecab process failed with the following error\n')
+        print(StdErr)
+        sys.exit()
+    elif StdErr:
+        print('\nmecab producing the following warning\n')
+        print(StdErr.decode())
     # do compression of the above
     compress_inflecting.main0(StdMecabFP,CorpusOrDic='corpus',OutFP=CmpMecabFP)
     return CmpMecabFP
@@ -62,6 +66,8 @@ def main():
     if not os.path.isfile(Args.raw_fp):
         sys.exit('\n\n  source file not found \n')
 
+    if not Args.std_modeldir:
+        Args.std_modeldir=Args.dic_loc
     if not os.path.isdir(Args.std_modeldir):
         sys.exit('\n\n  model dir not found \n')
 

@@ -79,10 +79,13 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
             TmpOutFP=OutFP+'.tmp'
         Out=open(TmpOutFP,'wt')
 
-    AlreadyNormedCommonFtsVals=set()
+    AlreadyNormedCommonFtsVals={}
     MSs,Consts=None,myModule.prepare_progressconsts(FP)
     FSr=open(FP)
-    ClusteredHDic={tuple(ClusterH.cluster_on):ClusterH for ClusterH in ClusteredHs}
+#    ClusteredHDic={tuple(ClusterH.cluster_on):ClusterH for ClusterH in ClusteredHs}
+    RelvFtsVals=[Cluster.cluster_on for Cluster in ClusteredHs]
+    ExclCats=('助詞','動詞活用語尾')
+    #PronOnly={ Key[-1] for Key in ClusteredHDic.keys() }
     for Cntr,LiNe in enumerate(FSr):
         if Cntr+1%1000==0:
             MSs=myModule.progress_counter(MSs,Cntr,Consts)
@@ -93,34 +96,41 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
         elif KanaOnly and not myModule.all_of_chartypes_p(upto_char(LiNe,[',','\t']),['hiragana','katakana','roman']):
             AsItIs=True
         else:
-            CommonFtsVals=tuple(mecabtools.pick_feats_fromline(LiNe,RelvFts,CorpusOrDic=CorpusOrDic))
-            if CorpusOrDic=='corpus' and len(CommonFtsVals)<RelvFtCnt:
+            CommonFtsVals={}
+            Tuple=tuple(mecabtools.pick_feats_fromline(LiNe,RelvFts,CorpusOrDic=CorpusOrDic))
+            CommonFtsVals.update(Tuple)
+            # excluding symbols and unknowns
+            if CorpusOrDic=='corpus' and (CommonFtsVals['cat'] in ExclCats or len(CommonFtsVals)<RelvFtCnt):
                 AsItIs=True
             else:
-                if CommonFtsVals not in ClusteredHDic.keys():
-                    AsItIs=True
-                    #if CommonFtsVals[-1] not in (key[-1] in key in ClusteredHDic.keys()):
-                     #   print('aaa')
-                else:
+                if CommonFtsVals in RelvFtsVals:
                     AsItIs=False
+                else:
+                    AsItIs=True
         if AsItIs:
             ToWrite=LiNe
         else:
-            if CommonFtsVals in AlreadyNormedCommonFtsVals:
+            # !!! THE CASE FOR NORMALISATION
+            if Debug>=2:
+                print('\nLikely normalisable cand: '+LiNe)
+
+            # for dic, don't repeat
+            if CorpusOrDic=='dic' and CommonFtsVals in AlreadyNormedCommonFtsVals:
                 ToWrite=''
             else:
-                ClusteredH=ClusteredHDic[CommonFtsVals]
+                # pick the right cluster
+                ClusteredH=next(Cluster for Cluster in ClusteredHs if Cluster.cluster_on==CommonFtsVals)
                 # exemblar existing means normalisable
                 if ClusteredH.exemplar:
                     NormalisedWd=ClusteredH.exemplar
                     if Debug>=2:
                         sys.stderr.write('\nnormalised automatically for '+ClusteredH.hiragana_rendering+'\n')
-                    ToWrite=NormalisedWd.get_mecabline(CorpusOrDic=CorpusOrDic)+'\n'
+                    ToWrite=NormalisedWd.get_mecabline(CorpusOrDic=CorpusOrDic)+'  NORMALISED\n'
                     if CorpusOrDic=='dic':
-                        AlreadyNormedCommonFtsVals.add(CommonFtsVals)
+                        AlreadyNormedCommonFtsVals.append(CommonFtsVals)
                 else:
                     if CorpusOrDic=='corpus' and UnnormalisableMarkP:
-                        ToWrite='\nNot automatically normalisable:\n'+LiNe+'\n'.join([KanjiWd.orth for KanjiWd in ClusteredH.kanji_tops])+'\n\n'
+                        ToWrite=LiNe.strip()+'  AMBIGUOUS\t'+' '.join([KanjiWd.orth for KanjiWd in ClusteredH.kanji_tops])+'\n'
                     else:
                         ToWrite=LiNe
             
@@ -150,11 +160,15 @@ def get_clustered_homs_file(LexFP,RelvFts,Frequents=set(),ProbExemplars={},OutFP
     for Cntr,(FtSet,Lines) in enumerate(FtLines.items()):
         if Debug and Cntr+1%100==0:
             MSs=myModule.prepare_progressconsts(MSs,Cntr,Consts)
-        MWds=[ mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic') for Line in Lines ]
-        if Frequents and not any(MWd.orth in Frequents for MWd in MWds):
+        MWds=[]
+        for Line in Lines:
+            MWd= mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic')
+            #MWd.summary()
+            MWds.append(MWd)
+        if Frequents and not any(MWd.lemma in Frequents for MWd in MWds):
             continue
-        FtSetLabeled=list(zip(RelvFts,FtSet))
-        myCHs=ClusteredHomonyms(MWds,FtSetLabeled)
+        #FtSetLabeled=list(zip(RelvFts,FtSet))
+        myCHs=ClusteredHomonyms(MWds,RelvFts)
         myCHs.set_exemplar(ProbExemplars)
         ClusteredHs.append(myCHs)
     return ClusteredHs
@@ -176,11 +190,16 @@ def collect_freq_wds(FreqWdFP,RankUpTo,HiraganaOnly=False):
     
     
 class ClusteredHomonyms:
-    def __init__(self,MecabWds,ClusterOn):
+    def __init__(self,MecabWds,FtsToClusterOn):
         if self.homonymity_check(MecabWds):
-            self.cluster_on=tuple(ClusterOn)
-            self.hiragana_rendering=jp_morph.kana2kana(self.cluster_on[-1][1])
-            self.cluster_str=','.join([Val for (_,Val) in ClusterOn ])
+            ClusterOn={}
+            for Wd in MecabWds:
+                FtsVals=tuple([(Ft,Wd.__dict__[Ft]) for Ft in FtsToClusterOn])
+                ClusterOn.update(FtsVals)
+            # cluster_on is a dict    
+            self.cluster_on=ClusterOn
+            self.hiragana_rendering=jp_morph.kana2kana(self.cluster_on['pronunciation'])
+            self.cluster_str=','.join([Val for (_,Val) in self.cluster_on.items() ])
             (KanaC,KanjiCs)=self.cluster_homonyms(MecabWds)
             self.kana_cluster=KanaC
             self.kana_lemma='unknown' if not self.kana_cluster else self.kana_cluster[0].lemma
@@ -192,6 +211,9 @@ class ClusteredHomonyms:
             self.represent_type=ReprType
             # exemplar is dynamically set with set_exemplar
             self.exemplar=None
+        else:
+            self.homonymity_check(MecabWds)
+            sys.exit('\nhomonimity violated\n')
 
     def special_kana_exemplar_p(self):
         # いる　なる　やる　ある only for now
