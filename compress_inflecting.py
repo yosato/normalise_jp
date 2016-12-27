@@ -48,17 +48,19 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
         else:
             if Debug>=2:
                 print('\nPotentially compressable line '+str(Cntr+1)+'\n'+LiNe+'\n')
-            MecabWd=mecabtools.mecabline2mecabwd(LiNe,CorpusOrDic=CorpusOrDic,WithCost=True)
-            NewWd,Suffix=stem_suffix_wd(MecabWd)
+            OrgWd=mecabtools.mecabline2mecabwd(LiNe,CorpusOrDic=CorpusOrDic,WithCost=True)
+            # THIS IS WHERE RENDERING HAPPENS
+            NewWd,Suffix=generate_stem_suffix_wds(OrgWd)
             NecEls=(NewWd.orth,NewWd.cat,NewWd.subcat,NewWd.infpat,NewWd.infform,NewWd.reading)
 
             if CorpusOrDic=='dic' and NecEls in NewWds:
-                sys.stderr.write('\nNot rendered, already found\n\n')
+                if Debug:
+                    sys.stderr.write('\nNot rendered, already found\n')
                 ToWrite=''
             else:
                 Line=NewWd.get_mecabline(CorpusOrDic=CorpusOrDic)
                 if Debug>=1:
-                    print('Rendered, '+MecabWd.orth+' ->'+NewWd.orth+'\n')
+                    print('Rendered, '+OrgWd.orth+' ->'+NewWd.orth+'\n')
                 if CorpusOrDic=='dic':
                     NewWds.add(NecEls)
                     ToWrite=Line+'\n'
@@ -73,15 +75,16 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
 SuffixDicFP='/home/yosato/links/myData/mecabStdJp/dics/compressed/suffixes.csv'
 SuffixWds=[ mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic') for Line in open(SuffixDicFP) ]
 
-def stem_suffix_wd(MecabWd):
-    Stem,Suffix=MecabWd.divide_stem_suffix_radical()
-    LenSuffix=len(Suffix)
-    if (LenSuffix==1 or LenSuffix==2) and not myModule.is_kana(Suffix[0]):
-        NewReading=MecabWd.reading[:-LenSuffix]+Stem[:-LenSuffix]
-    else:
-        NewReading=re.sub(r'%s$'%myModule.render_katakana(Suffix),'',MecabWd.reading)
-    StemWd=MecabWd.get_variant([('orth',Stem),('reading',NewReading),('pronunciation',NewReading),('suffix','')])
-    if not nonstem_wd_p(MecabWd):
+def generate_stem_suffix_wds(OrgMecabWd):
+    (Stem,StemReading),Suffix=OrgMecabWd.divide_stem_suffix_radical()
+    #    LenSuffix=len(Suffix)
+    
+#    if (LenSuffix==1 or LenSuffix==2) and not myModule.is_kana(Suffix[0]):
+ #       NewReading=MecabWd.reading[:-LenSuffix]+Stem[:-LenSuffix]
+  #  else:
+   #     NewReading=re.sub(r'%s$'%myModule.render_katakana(Suffix),'',MecabWd.reading)
+    StemWd=OrgMecabWd.get_variant([('orth',Stem),('reading',StemReading),('pronunciation',StemReading),('suffix','')])
+    if not nonstem_wd_p(OrgMecabWd):
         StemWd.infform='語幹'
     SuffixWd=next(Wd for Wd in SuffixWds if Wd.orth==Suffix) if Suffix else ''
 
