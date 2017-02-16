@@ -79,7 +79,7 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
             TmpOutFP=OutFP+'.tmp'
         Out=open(TmpOutFP,'wt')
 
-    AlreadyNormedCommonFtsVals={}
+    AlreadyNormedCommonFtsVals=[]
     MSs,Consts=None,myModule.prepare_progressconsts(FP)
     FSr=open(FP)
 #    ClusteredHDic={tuple(ClusterH.cluster_on):ClusterH for ClusterH in ClusteredHs}
