@@ -282,7 +282,7 @@ class ClusteredHomonyms:
         return Bool
     
     def cluster_homonyms(self,MecabWds,SortP=False):
-        KanaCluster=[ Hom  for Hom in MecabWds if myModule.all_of_chartypes_p(Hom.orth,['hiragana','katakana','roman']) ]
+        KanaCluster=[ Hom  for Hom in MecabWds if myModule.all_of_chartypes_p(Hom.orth,['hiragana','katakana','roman'],Exceptions=['〜']) ]
         if SortP:
             KanaCluster=sorted(KanaCluster,key=lambda x:x.count,reverse=True)
 

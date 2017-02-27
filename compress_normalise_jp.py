@@ -5,23 +5,24 @@ imp.reload(compress_inflecting)
 imp.reload(normalise_mecab)
 
 
-def main0(StdJpTxtFP,DicLoc,StdModelLoc,ExemplarFP=None,FreqWdFP=None):
+def main0(StdJpTxtFP,DicLoc,StdModelLoc,ExemplarFP=None,FreqWdFP=None,Debug=0):
     # first do the compression on dic and corpus
     #CmpDicFPs=build_compressed_dic(StdModelLoc)
 
-    DicFP=os.path.join(DicLoc,'inflecting.csv')
-    CmpDicFP=myModule.change_stem(DicFP,'.compressed',AddOrRemove='add')
-    Ret=myModule.ask_filenoexist_execute(CmpDicFP,compress_inflecting.main0,([DicFP],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':0}))
+    DicFPInf=os.path.join(DicLoc,'inflecting.csv')
+    DicFPNonInf=os.path.join(DicLoc,'non-inflecting.csv')
+    CmpDicFP=myModule.change_stem(DicFPInf,'.compressed',AddOrRemove='add')
+    Ret=myModule.ask_filenoexist_execute(CmpDicFP,compress_inflecting.main0,([DicFPInf],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':Debug}))
     FreshlyDoneP=True if Ret is None else False
     
     CmpMecabFP=myModule.change_ext(myModule.change_stem(StdJpTxtFP,'.compressed',AddOrRemove='add'),'mecab')
-    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,StdModelLoc,CmpMecabFP],{}),DefaultReuse=not FreshlyDoneP)
+    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,StdModelLoc,CmpMecabFP],{'Debug':Debug}),DefaultReuse=not FreshlyDoneP)
 
     # do normalisation of the corpus
     FinalMecabFP=myModule.change_stem(CmpMecabFP,'.normed')
     ExemplarFP=os.path.join(DicLoc,'compressed','exemplars.txt') if not ExemplarFP else ExemplarFP
     FreqWdFP=os.path.join(os.path.dirname(StdJpTxtFP),'freqwds.txt') if not FreqWdFP else FreqWdFP
-    normalise_mecab.main0([CmpDicFP],[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,CorpusOnly=True,UnnormalisableMarkP=True)
+    normalise_mecab.main0([CmpDicFP,DicFPNonInf],[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,CorpusOnly=True,UnnormalisableMarkP=True)
     # do another mecab parsing with a compressed model
 #    do_mecab_parse(GluedMecabFP,CNModelLoc,OutFP=FinalMecabFP)
 
@@ -36,7 +37,7 @@ def do_mecab_parse(InFP,ModelDir,OutFP,WakatiOnly=False):
     return SuccessP,StdOut,StdErr
 
 
-def build_compressed_corpus(StdJpTxtFP,StdModelLoc,CmpMecabFP):
+def build_compressed_corpus(StdJpTxtFP,StdModelLoc,CmpMecabFP,Debug=0):
     # do mecab parsing with the standard text
     StdMecabFP=myModule.change_ext(StdJpTxtFP,'mecab')
     SuccessP,StdOut,StdErr=do_mecab_parse(StdJpTxtFP,StdModelLoc,OutFP=StdMecabFP)
@@ -48,7 +49,7 @@ def build_compressed_corpus(StdJpTxtFP,StdModelLoc,CmpMecabFP):
         print('\nmecab producing the following warning\n')
         print(StdErr.decode())
     # do compression of the above
-    compress_inflecting.main0(StdMecabFP,CorpusOrDic='corpus',OutFP=CmpMecabFP)
+    compress_inflecting.main0(StdMecabFP,CorpusOrDic='corpus',OutFP=CmpMecabFP,Debug=Debug)
     return CmpMecabFP
     
 def main():

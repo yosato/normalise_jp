@@ -2,9 +2,13 @@ import unittest,imp,sys,os
 from pdb import set_trace
 
 import compress_normalise_jp
+import mecabtools
 imp.reload(compress_normalise_jp)
+imp.reload(mecabtools)
 
 TestPairs=[
+    # reru and seru
+    ('なにが彼をそうさせるのか考えられない','何 が 彼 を そう s a せ る の か 考え られ な い'),
     # case of unique rendering
     ('かゆがからく成る','粥 が 辛 く なr u'),
     # case of exemplar
@@ -16,7 +20,7 @@ TestPairs=[
     # case of elongation
     ('どーなってもいーや','どうなってもいいや'),
     #
-    ('切込みを入れる','切り込み を 入れ る')
+    ('切り込みを入れる','切込み を 入れ る')
 
 ]
 
@@ -26,6 +30,7 @@ class TestCompressNormalise(unittest.TestCase):
         HomeDir=os.getenv('HOME')
         DataDir=os.path.join(HomeDir,'links/mecabStdJp')
         self.testpairs=TestPairs
+        self.explines=[Pair[1] for Pair in TestPairs]
         self.testorgsents=[TestPair[0] for TestPair in TestPairs]
         self.testfp=os.path.join(DataDir,'corpora/raw/compress_normalise_test.txt')
 
@@ -37,10 +42,16 @@ class TestCompressNormalise(unittest.TestCase):
         self.stdmodelloc=os.path.join(DataDir,'models/standard')
 
     def test_compress_normalise(self):
-        for (OrgLine,ExpNewLine) in self.testpairs:
-            set_trace()
-            ResultNewLine=compress_normalise_jp.main0(self.testfp, self.dicloc, self.stdmodelloc, ExemplarFP=self.exemplarfp)
-            self.assertEqual(ResultNewLine,ExpNewLine)
+        ResultNewLines=[]
+        set_trace()
+        compress_normalise_jp.main0(self.testfp, self.dicloc, self.stdmodelloc, ExemplarFP=self.exemplarfp, Debug=1)
+        OutFP='.'.join(self.testfp.split('.')[:-1])+'.compressed.normed.mecab'
+        assert(os.path.isfile(OutFP))
+        MecabSentsG=mecabtools.mecabfile2mecabsents(OutFP)
+        for Sent in MecabSentsG:
+            ResultNewLines.append(Sent.stringify_orths())
+        self.maxDiff=None
+        self.assertEqual(self.explines,ResultNewLines)
 
 if __name__=='__main__':
     unittest.main()

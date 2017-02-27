@@ -26,25 +26,23 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
         if (Cntr+1)%1000==0:
             MLs=myModule.progress_counter(MLs,Consts,Cntr)
         Line=LiNe.strip()
+        if Debug:  sys.stderr.write('Org line: '+LiNe)
         if CorpusOrDic=='corpus' and Line=='EOS':
             AsIs=True
         else:
             FtsVals=mecabtools.pick_feats_fromline(Line,('cat','infpat','infform'),CorpusOrDic=CorpusOrDic)
             FtsValsDic=dict(FtsVals)
-            if FtsValsDic['cat'] not in ('動詞','形容詞','助動詞'):
-                AsIs=True
-            elif FtsValsDic['infpat'].startswith('五段') and FtsValsDic['infform'] not in ('連用タ接続','連用テ接続'):
+            #most of the time, you don't compress
+            AsIs=True
+            if FtsValsDic['cat'] in ('動詞','形容詞','助動詞'):
+                # but if they're inflecting, you usually compress
                 AsIs=False
-            elif FtsValsDic['infpat']=='一段':
-                if FtsValsDic['infform'] not in ('連用形','未然形'):
-                    AsIs=False
-                else:
+                #except it is ichidan renyo and mizen
+                if FtsValsDic['infpat']=='一段' and FtsValsDic['infform'] in ('連用形','未然形'):
                     AsIs=True
-            else:
-                AsIs=True
         if AsIs:
             ToWrite=LiNe
-
+            if Debug:   sys.stderr.write('no change\n')
         else:
             if Debug>=2:
                 print('\nPotentially compressable line '+str(Cntr+1)+'\n'+LiNe+'\n')
@@ -69,24 +67,22 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
                         ToWrite=Line+'\n'+Suffix.get_mecabline(CorpusOrDic='corpus')+'\n'
                     else:
                         ToWrite=Line+'\n'
+                if Debug:    sys.stderr.write('rendered: '+ToWrite+'\n')
 
         Out.write(ToWrite)
 
-SuffixDicFP='/home/yosato/links/myData/mecabStdJp/dics/compressed/suffixes.csv'
-SuffixWds=[ mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic') for Line in open(SuffixDicFP) ]
+#SuffixDicFP='/home/yosato/links/myData/mecabStdJp/dics/compressed/suffixes.csv'
+#SuffixWds=[ mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic') for Line in open(SuffixDicFP) ]
 
 def generate_stem_suffix_wds(OrgMecabWd):
     (Stem,StemReading),Suffix=OrgMecabWd.divide_stem_suffix_radical()
-    #    LenSuffix=len(Suffix)
-    
-#    if (LenSuffix==1 or LenSuffix==2) and not myModule.is_kana(Suffix[0]):
- #       NewReading=MecabWd.reading[:-LenSuffix]+Stem[:-LenSuffix]
-  #  else:
-   #     NewReading=re.sub(r'%s$'%myModule.render_katakana(Suffix),'',MecabWd.reading)
+
     StemWd=OrgMecabWd.get_variant([('orth',Stem),('reading',StemReading),('pronunciation',StemReading),('suffix','')])
     if not nonstem_wd_p(OrgMecabWd):
         StemWd.infform='語幹'
-    SuffixWd=next(Wd for Wd in SuffixWds if Wd.orth==Suffix) if Suffix else ''
+
+    SuffixAVs={'orth':Suffix,'lemma':Suffix, 'cat':'活用語尾', 'pronunciation':Suffix}
+    SuffixWd=mecabtools.MecabWdParse(**SuffixAVs)
 
     return StemWd,SuffixWd
 
