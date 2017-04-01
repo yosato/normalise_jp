@@ -7,28 +7,37 @@ imp.reload(normalise_mecab)
 
 def main0(StdJpTxtFP,DicLoc,StdModelLoc,ExemplarFP=None,FreqWdFP=None,Debug=0):
     # first do the compression on dic and corpus
-    #CmpDicFPs=build_compressed_dic(StdModelLoc)
+    #CmpDicFPs=builbd_compressed_dic(StdModelLoc)
 
-    DicFPInf=os.path.join(DicLoc,'inflecting.csv')
+    DicFPsInf=[os.path.join(DicLoc,Cat+'.csv') for Cat in ('adjectives','verbs','auxiliaries')]
     DicFPNonInf=os.path.join(DicLoc,'non-inflecting.csv')
-    CmpDicFP=myModule.change_stem(DicFPInf,'.compressed',AddOrRemove='add')
-    Ret=myModule.ask_filenoexist_execute(CmpDicFP,compress_inflecting.main0,([DicFPInf],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':Debug}))
+    CmpDicFPs=[ myModule.change_stem(DicFPInf,'.compressed',AddOrRemove='add') for DicFPInf in DicFPsInf ]
+    for (DicFPInf,CmpDicFP) in zip(DicFPsInf,CmpDicFPs):
+        Ret=myModule.ask_filenoexist_execute(CmpDicFPs,compress_inflecting.main0,([DicFPInf],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':Debug}))
     FreshlyDoneP=True if Ret is None else False
     
     CmpMecabFP=myModule.change_ext(myModule.change_stem(StdJpTxtFP,'.compressed',AddOrRemove='add'),'mecab')
-    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,StdModelLoc,CmpMecabFP],{'Debug':Debug}),DefaultReuse=not FreshlyDoneP)
+    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,StdModelLoc,CmpMecabFP],{'Debug':Debug}),LoopBackArg=(0,2),DefaultReuse=not FreshlyDoneP)
 
     # do normalisation of the corpus
     FinalMecabFP=myModule.change_stem(CmpMecabFP,'.normed')
     ExemplarFP=os.path.join(DicLoc,'compressed','exemplars.txt') if not ExemplarFP else ExemplarFP
     FreqWdFP=os.path.join(os.path.dirname(StdJpTxtFP),'freqwds.txt') if not FreqWdFP else FreqWdFP
-    normalise_mecab.main0([CmpDicFP,DicFPNonInf],[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,CorpusOnly=True,UnnormalisableMarkP=True)
+    normalise_mecab.main0([DicFPNonInf]+CmpDicFPs,[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,CorpusOnly=True,UnnormalisableMarkP=True,Debug=Debug)
     # do another mecab parsing with a compressed model
 #    do_mecab_parse(GluedMecabFP,CNModelLoc,OutFP=FinalMecabFP)
 
-def do_mecab_parse(InFP,ModelDir,OutFP,WakatiOnly=False):
-    Wakati='' if not WakatiOnly else '-o wakati'
-    Cmd=' '.join(['mecab -d',Wakati,ModelDir,InFP,'>', OutFP])
+def do_mecab_parse(InFP,ModelDir,OutFP,Format='standard'):
+    if Format == 'standard':
+        FormatArg=''
+    else:
+        if not any(Format!=FormatType for FormatType in ('wakati','dic')):
+            sys.exit('mecab format not correct\n')
+        elif Format=='dic':
+            FormatArg='--node-format="%m,%phl,%phr,%c,%H\n"'
+        elif Format=='wakati':
+            FormatArg='--node-format="%m" --eos-format="\n"'
+    Cmd=' '.join(['mecab -d',ModelDir,FormatArg,InFP,'>', OutFP])
     Proc=subprocess.Popen(Cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     (StdOut,StdErr)=Proc.communicate()
     Code=Proc.returncode
@@ -40,7 +49,7 @@ def do_mecab_parse(InFP,ModelDir,OutFP,WakatiOnly=False):
 def build_compressed_corpus(StdJpTxtFP,StdModelLoc,CmpMecabFP,Debug=0):
     # do mecab parsing with the standard text
     StdMecabFP=myModule.change_ext(StdJpTxtFP,'mecab')
-    SuccessP,StdOut,StdErr=do_mecab_parse(StdJpTxtFP,StdModelLoc,OutFP=StdMecabFP)
+    SuccessP,StdOut,StdErr=do_mecab_parse(StdJpTxtFP,StdModelLoc,Format='standard',OutFP=StdMecabFP)
     if not SuccessP:
         print('\nmecab process failed with the following error\n')
         print(StdErr)
