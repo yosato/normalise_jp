@@ -3,8 +3,12 @@ from collections import OrderedDict
 from collections import defaultdict
 #from mecabtools import mecabtools
 #imp.reload(mecabtools)
+
+from pdb import set_trace
+
 from pythonlib_ys import main as myModule
 from pythonlib_ys import jp_morph
+
 imp.reload(myModule)
 HomeDir=os.getenv('HOME')
 mecabtools=imp.load_source('mecabtools',os.path.join(HomeDir,'myProjects/myPythonLibs/mecabtools/mecabtools.py'))
@@ -13,17 +17,15 @@ imp.reload(mecabtools)
 from probability import probability
 imp.reload(probability)
 
-Debug=1
-
-def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMarkP=True,ProbExemplarFP=None,OutFP=None):
+def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMarkP=True,ProbExemplarFP=None,OutFP=None,Debug=0):
     LexDir=os.path.dirname(LexFPs[0])
     RelvFts=('cat','subcat','subcat2','sem','infform','infpat','pronunciation')
     ProbExemplars=get_exemplars(ProbExemplarFP) if ProbExemplarFP else None
     Frequents=collect_freq_wds(FreqWdFP,1000) if FreqWdFP else set()
-    OutFPStem='--'.join([os.path.basename(LexFP) for LexFP in LexFPs])
-    HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'OutFP':OutFPStem+'.out'}))
+    OutFPStem=LexDir+'/'+'--'.join([os.path.basename(LexFP) for LexFP in LexFPs])
+    HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'Debug':Debug}))
     if Debug:
-        print_clustered_homs(HClusters,OutFP=os.path.join(LexDir,'exemplarless_clusters.txt'))
+        print_clustered_homs(HClusters,OutFP=os.path.join(LexDir,'exemplarless_clusters.txt'),Debug=Debug)
     LexFPs=[] if CorpusOnly else LexFPs
     for MecabFile,CorpusOrDic in [(LexFP,'dic') for LexFP in LexFPs]+[(MecabCorpusFP,'corpus') for MecabCorpusFP in MecabCorpusFPs]:
         sys.stderr.write('\n\nNormalising a '+CorpusOrDic+' '+MecabFile+'\n')
@@ -37,14 +39,15 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
             OutFP=OutFP
         else:
             OutFP=os.path.join(NewDir,NewFN)
-        normalise_mecabfile(MecabFile,RelvFts,HClusters,OutFP=OutFP,CorpusOrDic=CorpusOrDic,UnnormalisableMarkP=UnnormalisableMarkP)
+        normalise_mecabfile(MecabFile,RelvFts,HClusters,OutFP=OutFP+'.tmp',CorpusOrDic=CorpusOrDic,UnnormalisableMarkP=UnnormalisableMarkP,Debug=Debug)
+        os.rename(OutFP+'.tmp',OutFP)
 
 
-def print_clustered_homs(ClusteredHs,OutFP=None):
+def print_clustered_homs(ClusteredHs,OutFP=None,Debug=0):
     Out=open(OutFP,'wt') if OutFP else sys.stdout
     for ClusteredH in ClusteredHs:
-        if Debug<2 and ClusteredH.exemplar is None:
-            Out.write(ClusteredH.show_summary()+'\n')
+        if Debug<2:
+            Out.write(ClusteredH.show_summary()+'\n\n')
     if OutFP:
         Out.close()
 
@@ -68,7 +71,7 @@ def upto_char(Str,Chars):
             Substr+=Char
     return Substr
 
-def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDic='corpus',KanaOnly=True,UnnormalisableMarkP=True):
+def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDic='corpus',Format='corpus',KanaOnly=True,UnnormalisableMarkP=True,Debug=0):
     # outfp could be none, true or string
     if not OutFP:
         Out=sys.stdout
@@ -87,6 +90,9 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
     ExclCats=('助詞','動詞活用語尾')
     #PronOnly={ Key[-1] for Key in ClusteredHDic.keys() }
     for Cntr,LiNe in enumerate(FSr):
+        if Debug:
+            if LiNe!='EOS\n':
+                sys.stderr.write('Line '+str(Cntr+1)+': '+LiNe)
         if Cntr+1%1000==0:
             MSs=myModule.progress_counter(MSs,Cntr,Consts)
         if not LiNe.strip():
@@ -111,29 +117,28 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
             ToWrite=LiNe
         else:
             # !!! THE CASE FOR NORMALISATION
-            if Debug>=2:
-                print('\nLikely normalisable cand: '+LiNe)
+            if Debug>=1:
+                print('\nLikely normalisable cand')
 
             # for dic, don't repeat
             if CorpusOrDic=='dic' and CommonFtsVals in AlreadyNormedCommonFtsVals:
                 ToWrite=''
             else:
+                OrgOrth=LiNe.split('\t')[0]
                 # pick the right cluster
                 ClusteredH=next(Cluster for Cluster in ClusteredHs if Cluster.cluster_on==CommonFtsVals)
-                # exemblar existing means normalisable
-                if ClusteredH.exemplar:
-                    NormalisedWd=ClusteredH.exemplar
-                    if Debug>=2:
-                        sys.stderr.write('\nnormalised automatically for '+ClusteredH.hiragana_rendering+'\n')
-                    ToWrite=NormalisedWd.get_mecabline(CorpusOrDic=CorpusOrDic)+'  NORMALISED\n'
+                if len(ClusteredH.represent_wds)==1:
+                    NormTypeStr='uniqueness' if not ClusteredH.exemplar else 'exemplar'
+                    NormalisedWd=ClusteredH.represent_wds[0]
+                    ToWrite=NormalisedWd.get_mecabline(CorpusOrDic=Format)+'\tNORMALISED by '+NormTypeStr+'from '+OrgOrth+'\n'
                     if CorpusOrDic=='dic':
                         AlreadyNormedCommonFtsVals.append(CommonFtsVals)
                 else:
                     if CorpusOrDic=='corpus' and UnnormalisableMarkP:
-                        ToWrite=LiNe.strip()+'  AMBIGUOUS\t'+' '.join([KanjiWd.orth for KanjiWd in ClusteredH.kanji_tops])+'\n'
+                        ToWrite='('+';'.join([KanjiWd.orth for KanjiWd in ClusteredH.kanji_tops])+')\t'+LiNe.strip().split('\t')[1]+'\tAMBIGUOUS '+OrgOrth+'\n'
                     else:
                         ToWrite=LiNe
-            
+            if Debug:    sys.stderr.write('after normalisation: '+ToWrite)
         Out.write(ToWrite)
         
     FSr.close()
@@ -144,12 +149,12 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
 def get_clustered_homs(LexFPs,*Args,**KWArgs):
     ClusteredH=[]
     for LexFP in LexFPs:
-        if Debug:
+        if KWArgs['Debug']:
             sys.stderr.write('\n\nfinding homonym clusters with the lexicon '+LexFP+'\n\n')
         ClusteredH.extend(get_clustered_homs_file(LexFP,*Args,**KWArgs))
     return ClusteredH
         
-def get_clustered_homs_file(LexFP,RelvFts,Frequents=set(),ProbExemplars={},OutFP=None):
+def get_clustered_homs_file(LexFP,RelvFts,Frequents=set(),ProbExemplars={},OutFP=None,Debug=0):
     RelvInds=mecabtools.fts2inds(RelvFts,CorpusOrDic='dic')
     if Debug:
         print('doing the raw clustering')
@@ -165,11 +170,11 @@ def get_clustered_homs_file(LexFP,RelvFts,Frequents=set(),ProbExemplars={},OutFP
             MWd= mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic')
             #MWd.summary()
             MWds.append(MWd)
-        if Frequents and not any(MWd.lemma in Frequents for MWd in MWds):
+        if MWd.cat!='名詞' and not any(MWd.lemma in Frequents for MWd in MWds):
             continue
         #FtSetLabeled=list(zip(RelvFts,FtSet))
-        myCHs=ClusteredHomonyms(MWds,RelvFts)
-        myCHs.set_exemplar(ProbExemplars)
+        if Debug:    sys.stderr.write(' '.join([MWd.orth for MWd in MWds])+'\n')
+        myCHs=ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
         ClusteredHs.append(myCHs)
     return ClusteredHs
 
@@ -190,7 +195,7 @@ def collect_freq_wds(FreqWdFP,RankUpTo,HiraganaOnly=False):
     
     
 class ClusteredHomonyms:
-    def __init__(self,MecabWds,FtsToClusterOn):
+    def __init__(self,MecabWds,FtsToClusterOn,ExemplarDict={}):
         if self.homonymity_check(MecabWds):
             ClusterOn={}
             for Wd in MecabWds:
@@ -200,17 +205,20 @@ class ClusteredHomonyms:
             self.cluster_on=ClusterOn
             self.hiragana_rendering=jp_morph.kana2kana(self.cluster_on['pronunciation'])
             self.cluster_str=','.join([Val for (_,Val) in self.cluster_on.items() ])
-            (KanaC,KanjiCs)=self.cluster_homonyms(MecabWds)
+            self.all_words=MecabWds
+            (KanaC,KanjiCs)=self.cluster_homonyms(self.all_words)
             self.kana_cluster=KanaC
             self.kana_lemma='unknown' if not self.kana_cluster else self.kana_cluster[0].lemma
             self.kanji_clusters=KanjiCs
             self.kanji_tops=[KanjiC[0] for KanjiC in self.kanji_clusters]
+            # exemplar is dynamically set with set_exemplar
+            #self.exemplar=self.set_exemplar(Exemplars) if Exemplars else None
             #self.interkanji_dist=InterkanjiDist
-            ReprType,ReprWds=self.pick_representative()
+            self.exemplar=False
+            ReprType,ReprWds=self.pick_representative(ExemplarDict)
             self.represent_wds=ReprWds
             self.represent_type=ReprType
-            # exemplar is dynamically set with set_exemplar
-            self.exemplar=None
+
         else:
             self.homonymity_check(MecabWds)
             sys.exit('\nhomonimity violated\n')
@@ -226,50 +234,47 @@ class ClusteredHomonyms:
                 
         return Bool
             
-    def set_exemplar(self,ProbExemplars):
-        Normalisable=False;Exemplar=None
-        if self.special_kana_exemplar_p():
-        # special exceptions where you don't convert to kanji
-            Exemplar=self.kana_cluster[0]
-        elif not self.kanji_clusters:
-        # kana only case
-            Normalisable=True
-            Exemplar=self.kana_cluster[0]
-        elif len(self.kanji_clusters)==1:
-          # nonambiguous kanji case
-            Normalisable=True
-            Exemplar=self.represent_wds[0]
-        elif self.kana_lemma in ProbExemplars.keys():
-            ExemplarWds= [Wd for Wd in myModule.flatten_list(self.kanji_clusters) if Wd.lemma in ProbExemplars.values()]
-            if ExemplarWds:
-                Normalisable=True
-                Exemplar=ExemplarWds[0]
-                
-        self.exemplar=Exemplar
-        return Normalisable
-    
-    def pick_representative(self,Criterion='rate'):
+
+    def pick_representative(self,ExemplarDict={}):
         if not (self.kana_cluster or self.kanji_clusters):
             sys.exit('something is wrong, no cluster content')
         else:
-#            # this means only kanji clusteres are populated
- #           if not self.kana_cluster:
-  #              return ('kanji',self.kanji_clusters[0][0])
-   #         #and this, only kana cluster exists
-    #        elif not self.kanji_clusters:
-     #           return ('kana',self.kana_cluster[0])
-      #      # the following two are when both exist, and then, it depens on the count
-       #     else:
-                if Criterion=='count':
-                    if self.kana_cluster[0].count*0.6>self.kanji_clusters[0][0].count:
-                        return 'kana',self.kana_cluster[0]
-                    else:
-                        return 'kanji',self.kanji_clusters[0][0]
+            # first, if there's an exemplar, return it
+            ExemplarP=False
+            if ExemplarDict and self.kana_lemma in ExemplarDict.keys():
+                ExemplarStr=ExemplarDict[self.kana_lemma]
+                Exemplars=[Wd for Wd in self.all_words if Wd.lemma==ExemplarStr]
+                if Exemplars:
+                    ExemplarP=True
+
+            if ExemplarP:
+                Exemplar=Exemplars[0]
+                Type='kana' if Exemplar else 'kanji'
+                self.exemplar=True
+                return Type, [Exemplar]
+            # either kana or kanji clusters is empty, pick the top of the non-empty ones
+            else:
+                if not self.kana_cluster or not self.kanji_clusters:
+                    return ('kana',[self.kana_cluster[0]]) if self.kana_cluster else ('kanji', [Cluster[0] for Cluster in self.kanji_clusters])
+
+                elif len(self.kanji_clusters)>=2:
+                    return 'kanji', [Cluster[0] for Cluster in self.kanji_clusters]
+            
                 else:
-                    if not self.kanji_clusters:
-                        return 'kana',[jp_morph.pick_highest_charrate(self.kana_cluster,['hiragana'])[0]]
+                    #set_trace()
+                    KanaWd=self.kana_cluster[0]
+                    KanjiTopWd=self.kanji_clusters[0][0]
+                    (MoreCostly,LessCostly),IndexHigher,Rate=larger_smaller(KanaWd,KanjiTopWd,Lambda=lambda x:x.costs[-1])
+                    if IndexHigher==1 and Rate<0.7:
+                        Type='kana'; Wd=KanaWd
                     else:
-                        return 'kanji',[jp_morph.pick_highest_charrate(Cluster,['han'])[0] for Cluster in self.kanji_clusters]
+                        Type='kanji'; Wd=KanjiTopWd
+                    return Type, [Wd]
+#                else:
+ #                   if not self.kanji_clusters:
+  #                      return 'kana',[jp_morph.pick_highest_charrate(self.kana_cluster,['hiragana'])[0]]
+   #                 else:
+    #                    return 'kanji',[jp_morph.pick_highest_charrate(Cluster,['han'])[0] for Cluster in self.kanji_clusters]
 
     def homonymity_check(self,MecabWds):
         Bool=True; PrvPron=None
@@ -309,7 +314,7 @@ class ClusteredHomonyms:
         return KanaCluster,KanjiClusters
     #,InterClusterDist
 
-    def order_clusters(self):
+    def order_clusters(self,Criterion='cost'):
         if not self.kanji_clusters:
             OrderedReprs=[self.order_by_countscore(self.kana_cluster)]
         else:
@@ -342,19 +347,17 @@ class ClusteredHomonyms:
         Lines=[]
         Lines.append(self.hiragana_rendering)
         Lines.append(repr(self.cluster_on))
-        Lines.append(repr([Wd.orth for Wd in self.represent_wds]))
-        ExemplarStr='Exempar: '
-        if self.exemplar:
-            ExemplarStr+=self.exemplar.orth
-        else:
-            ExemplarStr+=' NONE'
-        Lines.append(ExemplarStr)
+        #Lines.append(repr([Wd.lemma for Wd in self.represent_wds]))
         Lines.append('kana cluster: '+' '.join(get_wdcntstrs(self.kana_cluster)))
         KanjiClustersStr=''
         if self.kanji_clusters:
             for Cl in self.kanji_clusters:
                 KanjiClustersStr+=' '.join(get_wdcntstrs(Cl))+' / '
         Lines.append('kanji clusters: '+KanjiClustersStr)
+        if self.exemplar:
+            Lines.append('Exemplar exists')
+        Lines.append(repr([Wd.orth for Wd in self.represent_wds]))
+
         #LineElsIKD=[]
 #        if len(self.kanji_clusters)>=2:
  #           for (Evt,Prob) in self.interkanji_dist.evtprob.items():
@@ -362,6 +365,17 @@ class ClusteredHomonyms:
         #Lines.append('kanji-conversion ratio '+' '.join(LineElsIKD))
         return '\n'.join(Lines)
 
+def larger_smaller(El1,El2,Lambda):
+    Figures=Lambda(El1),Lambda(El2)
+    if Figures[0]==Figures[1]:
+        return (None,None),None,0
+    elif Figures[0]<Figures[1]:
+        Smaller=El1;Larger=El2;HigherIndex=1;LowerIndex=0
+    else:
+        Smaller=El2;Larger=El1;HigherIndex=0;LowerIndex=1
+    Rate=Figures[LowerIndex]/Figures[HigherIndex]
+    return (Smaller,Larger),HigherIndex,Rate
+    
 def output_model_text(Homs,Out):
     FSw=open(Out,'wt')
     for Hom in Homs:
@@ -372,31 +386,6 @@ def output_model_text(Homs,Out):
         FSw.write(ClusterStr+'\n\n')
         
     FSw.close()
-
-
-def main00(CorpusFPs,LexFP,FtNums,AdditionalLexs=[],OutputModelText=None, CorpusOnly=False,UsePrevClusteredHoms=None,Debug=0):
-    
-    if UsePrevClusteredHoms:
-        PickleFP=UsePrevClusteredHoms
-    else:
-        PickleFP='_'.join(CorpusFPs)+'_'+os.path.basename(LexFP)+'.clusteredhoms.pickle'
-    (ClusteredHoms,_)=myModule.ask_filenoexist_execute_pickle(PickleFP,create_clustered_homonyms,([CorpusFPs,LexFP,FtNums],{}))
-    if OutputModelText:
-        OutFP=PickleFP.replace('.pickle','.txt')
-        output_model_text(ClusteredHoms,OutFP)
-        
-    print('\nextracting items to normalise...')
-    WdsRepls=extract_wds2normalise(ClusteredHoms)
-
-    print('\nnormalising corpora...')
-    normalise_mecab(CorpusFPs,WdsRepls,'corpus',Debug=Debug)
-
-    if not CorpusOnly:
-        print('\nnormalising main lexicon...')
-        normalise_mecab([LexFP],WdsRepls,'lex')
-        if AdditionalLexs:
-            print('\nnormalising other lexicons...')
-            normalise_mecab(AdditionalLexs,WdsRepls,'simplelex')
 
             
 def create_clustered_homonyms(CorpusFPs,LexFP,FtNums):

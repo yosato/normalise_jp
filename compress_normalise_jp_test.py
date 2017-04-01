@@ -10,17 +10,17 @@ TestPairs=[
     # reru and seru
     ('なにが彼をそうさせるのか考えられない','何 が 彼 を そう s a せ る の か 考え られ な い'),
     # case of unique rendering
-    ('かゆがからく成る','粥 が 辛 く なr u'),
+    ('そのキュウリがからくなる','その 胡瓜 が 辛 く なr u'),
     # case of exemplar
     ('そういわれても','そう 言w a れ て も'),
     # case of kana rendering
-    ('サッパリとしたリンゴ', 'さっぱり と し た りんご'),
+    ('サッパリとしたリンゴ', 'さっぱり と s i た りんご'),
     # case of suffix-kana change
     ('サボったらどうなるかな','さぼr t たら どう なr u かな'),
-    # case of elongation
+    # case of elongationb
     ('どーなってもいーや','どうなってもいいや'),
     #
-    ('切り込みを入れる','切込み を 入れ る')
+    ('深い切り込みを入れる','深 い 切込み を 入れ る')
 
 ]
 

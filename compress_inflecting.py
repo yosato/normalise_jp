@@ -1,5 +1,5 @@
 import imp,re,sys,os
-
+import romkan
 mecabtools=imp.load_source('mecabtools',os.path.join(os.getenv('HOME'),'myProjects/myPythonLibs/mecabtools/mecabtools.py'))
 import mecabtools
 from pythonlib_ys import main as myModule
@@ -26,7 +26,7 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
         if (Cntr+1)%1000==0:
             MLs=myModule.progress_counter(MLs,Consts,Cntr)
         Line=LiNe.strip()
-        if Debug:  sys.stderr.write('Org line: '+LiNe)
+        if Debug>=2:  sys.stderr.write('Org line: '+LiNe)
         if CorpusOrDic=='corpus' and Line=='EOS':
             AsIs=True
         else:
@@ -42,18 +42,21 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
                     AsIs=True
         if AsIs:
             ToWrite=LiNe
-            if Debug:   sys.stderr.write('no change\n')
+            if Debug>=2:   sys.stderr.write('no change\n')
         else:
             if Debug>=2:
                 print('\nPotentially compressable line '+str(Cntr+1)+'\n'+LiNe+'\n')
             OrgWd=mecabtools.mecabline2mecabwd(LiNe,CorpusOrDic=CorpusOrDic,WithCost=True)
             # THIS IS WHERE RENDERING HAPPENS
-            NewWd,Suffix=generate_stem_suffix_wds(OrgWd)
+            try:
+                NewWd,Suffix=generate_stem_suffix_wds(OrgWd)
+            except:
+                generate_stem_suffix_wds(OrgWd)
             NecEls=(NewWd.orth,NewWd.cat,NewWd.subcat,NewWd.infpat,NewWd.infform,NewWd.reading)
 
             if CorpusOrDic=='dic' and NecEls in NewWds:
-                if Debug:
-                    sys.stderr.write('\nNot rendered, already found\n')
+                if Debug>=2:
+                    sys.stderr.write('Not rendered, already found\n')
                 ToWrite=''
             else:
                 Line=NewWd.get_mecabline(CorpusOrDic=CorpusOrDic)
@@ -77,11 +80,11 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
 def generate_stem_suffix_wds(OrgMecabWd):
     (Stem,StemReading),Suffix=OrgMecabWd.divide_stem_suffix_radical()
 
-    StemWd=OrgMecabWd.get_variant([('orth',Stem),('reading',StemReading),('pronunciation',StemReading),('suffix','')])
+    StemWd=OrgMecabWd.get_variant([('orth',Stem),('infform','語幹'),('reading',StemReading),('pronunciation',StemReading),('suffix','')])
     if not nonstem_wd_p(OrgMecabWd):
         StemWd.infform='語幹'
 
-    SuffixAVs={'orth':Suffix,'lemma':Suffix, 'cat':'活用語尾', 'pronunciation':Suffix}
+    SuffixAVs={'orth':Suffix,'lemma':Suffix, 'infform':OrgMecabWd.infform, 'cat':'活用語尾', 'pronunciation':romkan.to_katakana(Suffix)}
     SuffixWd=mecabtools.MecabWdParse(**SuffixAVs)
 
     return StemWd,SuffixWd
