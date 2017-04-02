@@ -43,7 +43,7 @@ class TestCompressNormalise(unittest.TestCase):
 
     def test_compress_normalise(self):
         ResultNewLines=[]
-        set_trace()
+#        set_trace()
         compress_normalise_jp.main0(self.testfp, self.dicloc, self.stdmodelloc, ExemplarFP=self.exemplarfp, Debug=1)
         OutFP='.'.join(self.testfp.split('.')[:-1])+'.compressed.normed.mecab'
         assert(os.path.isfile(OutFP))
