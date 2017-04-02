@@ -28,11 +28,11 @@ TestPairs=[
 class TestCompressNormalise(unittest.TestCase):
     def setUp(self):
         HomeDir=os.getenv('HOME')
-        DataDir=os.path.join(HomeDir,'links/mecabStdJp')
+        DataDir=os.path.join('/links/processedData')
         self.testpairs=TestPairs
         self.explines=[Pair[1] for Pair in TestPairs]
         self.testorgsents=[TestPair[0] for TestPair in TestPairs]
-        self.testfp=os.path.join(DataDir,'corpora/raw/compress_normalise_test.txt')
+        self.testfp=os.path.join(DataDir,'mecabStdJp/corpora/compress_normalise_test.txt')
 
         with open(self.testfp,'tw') as FSw:
             FSw.write('\n'.join(self.testorgsents)+'\n')
