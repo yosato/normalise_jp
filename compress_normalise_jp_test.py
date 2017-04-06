@@ -28,23 +28,24 @@ TestPairs=[
 class TestCompressNormalise(unittest.TestCase):
     def setUp(self):
         HomeDir=os.getenv('HOME')
-        DataDir=os.path.join('/links/processedData')
+        ProcDataDir=os.path.join('/links/processedData/mecabStdJp')
+        RawDataDir=os.path.join('/links/rawData/mecabStdJp')
         self.testpairs=TestPairs
         self.explines=[Pair[1] for Pair in TestPairs]
         self.testorgsents=[TestPair[0] for TestPair in TestPairs]
-        self.testfp=os.path.join(DataDir,'mecabStdJp/corpora/compress_normalise_test.txt')
+        self.testfp=os.path.join(ProcDataDir,'corpora/compress_normalise_test.txt')
 
         with open(self.testfp,'tw') as FSw:
             FSw.write('\n'.join(self.testorgsents)+'\n')
 
-        self.exemplarfp=os.path.join(DataDir,'dics/compressed/exemplars.txt')
-        self.dicloc=os.path.join(DataDir,'dics')
-        self.stdmodelloc=os.path.join(DataDir,'models/standard')
+        self.dicloc=os.path.join(RawDataDir,'dics')
+        self.exemplarfp=os.path.join(self.dicloc,'exemplars.txt')
+#        self.stdmodelloc=os.path.join(RawDataDir,'models/standard')
 
     def test_compress_normalise(self):
         ResultNewLines=[]
-#        set_trace()
-        compress_normalise_jp.main0(self.testfp, self.dicloc, self.stdmodelloc, ExemplarFP=self.exemplarfp, Debug=1)
+        set_trace()
+        compress_normalise_jp.main0(self.testfp, self.dicloc, ExemplarFP=self.exemplarfp, Debug=1)
         OutFP='.'.join(self.testfp.split('.')[:-1])+'.compressed.normed.mecab'
         assert(os.path.isfile(OutFP))
         MecabSentsG=mecabtools.mecabfile2mecabsents(OutFP)
