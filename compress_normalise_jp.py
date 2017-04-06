@@ -5,29 +5,42 @@ imp.reload(compress_inflecting)
 imp.reload(normalise_mecab)
 
 
-def main0(StdJpTxtFP,DicLoc,StdModelLoc,ExemplarFP=None,FreqWdFP=None,Debug=0):
-    # first do the compression on dic and corpus
-    #CmpDicFPs=builbd_compressed_dic(StdModelLoc)
-
-    DicFPsInf=[os.path.join(DicLoc,Cat+'.csv') for Cat in ('adjectives','verbs','auxiliaries')]
-    DicFPNonInf=os.path.join(DicLoc,'non-inflecting.csv')
-    CmpDicFPs=[ myModule.change_stem(DicFPInf,'.compressed',AddOrRemove='add') for DicFPInf in DicFPsInf ]
+def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,ExemplarFP=None,FreqWdFP=None,Debug=0):
+    #################################
+    ## compression on dic and corpus
+    #################################
+    ### dic first ###
+    # original dics to compress, inflecting categories only
+    InfCats=('adjectives','verbs','auxiliaries')
+    DicFPsInf=[os.path.join(OrgDicLoc,Cat+'.csv') for Cat in InfCats ]
+    NewDicLoc=OrgDicLoc.replace('rawData','processedData')
+    CmpDicFPs=[os.path.join(NewDicLoc,Cat+'.compressed.csv') for Cat in InfCats ]
     for (DicFPInf,CmpDicFP) in zip(DicFPsInf,CmpDicFPs):
         Ret=myModule.ask_filenoexist_execute(CmpDicFPs,compress_inflecting.main0,([DicFPInf],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':Debug}))
     FreshlyDoneP=True if Ret is None else False
-    
-    CmpMecabFP=myModule.change_ext(myModule.change_stem(StdJpTxtFP,'.compressed',AddOrRemove='add'),'mecab')
-    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,StdModelLoc,CmpMecabFP],{'Debug':Debug}),LoopBackArg=(0,2),DefaultReuse=not FreshlyDoneP)
-
-    # do normalisation of the corpus
+    # then the corpora
+    CmpMecabDir=os.path.dirname(StdJpTxtFP).replace('rawData','processedData')
+    CmpMecabFN=os.path.basename(StdJpTxtFP).replace('.txt','.compressed.mecab')
+    CmpMecabFP=os.path.join(CmpMecabDir, CmpMecabFN)
+    ModelDir=os.path.dirname(OrgDicLoc)+'/models' if ModelDir is None else ModelDir
+    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,ModelDir,CmpMecabFP],{'Debug':Debug}),LoopBackArg=(0,2),DefaultReuse=not FreshlyDoneP)
+    ###################################
+    ## normalisation of the corpus
+    ##################################    
+    # for normalisation you include non-inflecting dic as well
+    DicFPNonInf=os.path.join(OrgDicLoc,'non-inflecting.csv')
     FinalMecabFP=myModule.change_stem(CmpMecabFP,'.normed')
-    ExemplarFP=os.path.join(DicLoc,'compressed','exemplars.txt') if not ExemplarFP else ExemplarFP
+    # an exemplar is a word with a single dominant normalisation case
+    ExemplarFP=os.path.join(OrgDicLoc,'exemplars.txt') if not ExemplarFP else ExemplarFP
+    # one could limit the targets to frequent words only
     FreqWdFP=os.path.join(os.path.dirname(StdJpTxtFP),'freqwds.txt') if not FreqWdFP else FreqWdFP
+    # core part
     normalise_mecab.main0([DicFPNonInf]+CmpDicFPs,[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,CorpusOnly=True,UnnormalisableMarkP=True,Debug=Debug)
-    # do another mecab parsing with a compressed model
-#    do_mecab_parse(GluedMecabFP,CNModelLoc,OutFP=FinalMecabFP)
+
 
 def do_mecab_parse(InFP,ModelDir,OutFP,Format='standard'):
+    if not os.path.isfile(InFP) or os.path.getsize(InFP)==0:
+        sys.exit('file nonexistent or empty')
     if Format == 'standard':
         FormatArg=''
     else:
@@ -42,7 +55,7 @@ def do_mecab_parse(InFP,ModelDir,OutFP,Format='standard'):
     (StdOut,StdErr)=Proc.communicate()
     Code=Proc.returncode
     SuccessP=True if Code==0 else False
-
+    SuccessP=False if StdErr else True
     return SuccessP,StdOut,StdErr
 
 

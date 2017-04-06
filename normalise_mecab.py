@@ -18,11 +18,15 @@ from probability import probability
 imp.reload(probability)
 
 def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMarkP=True,ProbExemplarFP=None,OutFP=None,Debug=0):
+    for FP in (FreqWdFP,ProbExemplarFP):
+        if FP is not None and not os.path.isfile(FreqWdFP):
+            sys.exit(FP+' does not exist\n')
+            
     LexDir=os.path.dirname(LexFPs[0])
     RelvFts=('cat','subcat','subcat2','sem','infform','infpat','pronunciation')
     ProbExemplars=get_exemplars(ProbExemplarFP) if ProbExemplarFP else None
     Frequents=collect_freq_wds(FreqWdFP,1000) if FreqWdFP else set()
-    OutFPStem=LexDir+'/'+'--'.join([os.path.basename(LexFP) for LexFP in LexFPs])
+    OutFPStem=LexDir+'/'+'--'.join([os.path.basename(LexFP) for LexFP in LexFPs]).replace('rawData','processedData')
     HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'Debug':Debug}))
     if Debug:
         print_clustered_homs(HClusters,OutFP=os.path.join(LexDir,'exemplarless_clusters.txt'),Debug=Debug)
@@ -173,7 +177,8 @@ def get_clustered_homs_file(LexFP,RelvFts,Frequents=set(),ProbExemplars={},OutFP
         if MWd.cat!='名詞' and not any(MWd.lemma in Frequents for MWd in MWds):
             continue
         #FtSetLabeled=list(zip(RelvFts,FtSet))
-        if Debug:    sys.stderr.write(' '.join([MWd.orth for MWd in MWds])+'\n')
+        if (Debug==1 and Cntr%50==0) or Debug>=2 :
+            sys.stderr.write(' '.join([MWd.orth for MWd in MWds])+'\n')
         myCHs=ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
         ClusteredHs.append(myCHs)
     return ClusteredHs
