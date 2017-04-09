@@ -9,7 +9,7 @@ def refresh_model(DicDir,ConfDir,ModelDir):
     list(map(lambda x:shutil.copy(x,ModelDir), glob.glob(DicDir+'/*.csv')))
     list(map(lambda x:shutil.copy(x,ModelDir), glob.glob(ConfDir+'/*')))
     Cmd=' '.join(['mecab-dict-index -d',ModelDir,'-o',ModelDir])
-    subprocess.run(Cmd,shell=True)
+    subprocess.call(Cmd,shell=True)
 
 def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,ExemplarFP=None,FreqWdFP=None,Debug=0):
     #################################
