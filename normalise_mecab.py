@@ -26,7 +26,8 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
     RelvFts=('cat','subcat','subcat2','sem','infform','infpat','pronunciation')
     ProbExemplars=get_exemplars(ProbExemplarFP) if ProbExemplarFP else None
     Frequents=collect_freq_wds(FreqWdFP,1000) if FreqWdFP else set()
-    OutFPStem=LexDir+'/'+'--'.join([os.path.basename(LexFP) for LexFP in LexFPs]).replace('rawData','processedData')
+    OutFPStem=LexDir+'/'+'--'.join([os.path.basename(LexFP) for LexFP in LexFPs])
+    OutFPStem=OutFPStem.replace('rawData','processedData')
     HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'Debug':Debug}))
     if Debug:
         print_clustered_homs(HClusters,OutFP=os.path.join(LexDir,'exemplarless_clusters.txt'),Debug=Debug)
