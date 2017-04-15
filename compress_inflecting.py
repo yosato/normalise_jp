@@ -9,7 +9,7 @@ imp.reload(jp_morph)
 
 #Debug=2
 
-def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
+def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None):
     NewWds=set()
     if OutFP is True:
         Stem,Ext=myModule.get_stem_ext(MecabFP)
@@ -19,18 +19,31 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
     else:
         Out=open(OutFP,'wt')
 
-    Consts=myModule.prepare_progressconsts(MecabFP)
-    MLs=None
-    FSr=open(MecabFP)
-    for Cntr,LiNe in enumerate(FSr):
-        if (Cntr+1)%1000==0:
-            MLs=myModule.progress_counter(MLs,Consts,Cntr)
-        Line=LiNe.strip()
-        if Debug>=2:  sys.stderr.write('Org line: '+LiNe)
+#    Consts=myModule.prepare_progressconsts(MecabFP)
+ #   MLs=None
+    SentChunkGen=mecabtools.generate_sentchunks(MecabFP)
+    #FSr=open(MecabFP)
+
+    for Cntr,SentChunk in enumerate(SentChunkGen):
+        try:
+            NewLines=lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts)
+            Out.write('\n'.join(NewLines+['EOS'])+'\n')
+        except:
+            Debug=1
+            #try:
+            lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts)
+            #except:
+            #    print('\nsentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\n')
+
+        
+def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0):
+    NewLines=[]
+    for Cntr,Line in enumerate(SentChunk):
+        if Debug>=2:  sys.stderr.write('Org line: '+Line+'\n')
         if CorpusOrDic=='corpus' and Line=='EOS':
             AsIs=True
         else:
-            FtsVals=mecabtools.pick_feats_fromline(Line,('cat','infpat','infform'),CorpusOrDic=CorpusOrDic)
+            FtsVals=mecabtools.pick_feats_fromline(Line,('cat','infpat','infform'),CorpusOrDic=CorpusOrDic,Fts=Fts)
             FtsValsDic=dict(FtsVals)
             #most of the time, you don't compress
             AsIs=True
@@ -41,12 +54,12 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
                 if FtsValsDic['infpat']=='一段' and FtsValsDic['infform'] in ('連用形','未然形'):
                     AsIs=True
         if AsIs:
-            ToWrite=LiNe
+            ToWrite=Line
             if Debug>=2:   sys.stderr.write('no change\n')
         else:
             if Debug>=2:
-                print('\nPotentially compressable line '+str(Cntr+1)+'\n'+LiNe+'\n')
-            OrgWd=mecabtools.mecabline2mecabwd(LiNe,CorpusOrDic=CorpusOrDic,WithCost=True)
+                print('\nPotentially compressable line '+str(Cntr+1)+'\n'+Line+'\n\n')
+            OrgWd=mecabtools.mecabline2mecabwd(Line,Fts=Fts,CorpusOrDic=CorpusOrDic,WithCost=True)
             # THIS IS WHERE RENDERING HAPPENS
             try:
                 NewWd,Suffix=generate_stem_suffix_wds(OrgWd)
@@ -72,8 +85,10 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0):
                         ToWrite=Line+'\n'
                 if Debug:    sys.stderr.write('rendered: '+ToWrite+'\n')
 
-        Out.write(ToWrite)
+        NewLines.append(ToWrite)
+    return NewLines
 
+        
 #SuffixDicFP='/home/yosato/links/myData/mecabStdJp/dics/compressed/suffixes.csv'
 #SuffixWds=[ mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic') for Line in open(SuffixDicFP) ]
 
