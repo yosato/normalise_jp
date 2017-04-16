@@ -25,6 +25,8 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None):
     #FSr=open(MecabFP)
 
     for Cntr,SentChunk in enumerate(SentChunkGen):
+        if Debug:
+            sys.stderr.write('\nsent '+str(Cntr+1)+' '+''.join([Sent.split('\t')[0] for Sent in SentChunk])+'\n')
         try:
             NewLines=lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts)
             Out.write('\n'.join(NewLines+['EOS'])+'\n')
@@ -48,7 +50,7 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
                 # but if they're inflecting, you usually compress
                 AsIs=False
                 #except it is ichidan renyo and mizen
-                if FtsValsDic['infpat']=='一段' and FtsValsDic['infform'] in ('連用形','未然形'):
+                if (FtsValsDic['infpat']=='一段' and FtsValsDic['infform'] in ('連用形','未然形')) or FtsValsDic['infpat']=='不変化型' or FtsValsDic['infpat']=='特殊・ヌ':
                     AsIs=True
         if AsIs:
             ToWrite=[Line]
@@ -70,17 +72,14 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
                     sys.stderr.write('Not rendered, already found\n')
                 ToWrite=''
             else:
-                Line=NewWd.get_mecabline(CorpusOrDic=CorpusOrDic)
                 if Debug>=1:
                     print('Rendered, '+OrgWd.orth+' ->'+NewWd.orth+'\n')
                 if CorpusOrDic=='dic':
                     NewWds.add(NecEls)
                     ToWrite=[Line]
                 else:
-                    ToWrite=[Line]
-                    if Suffix.orth:
-                        ToWrite.append(Suffix.get_mecabline(CorpusOrDic='corpus'))
-                if Debug:    sys.stderr.write('rendered: '+ToWrite+'\n')
+                    ToWrite=[ Wd.get_mecabline(CorpusOrDic='corpus') for Wd in (NewWd,Suffix) if Wd.orth ]
+                if Debug:    sys.stderr.write('rendered: '+'\n'.join(ToWrite)+'\n')
 
         NewLines.extend(ToWrite)
     return NewLines
