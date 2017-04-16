@@ -34,7 +34,7 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
     LexFPs=[] if CorpusOnly else LexFPs
     for MecabFile,CorpusOrDic in [(LexFP,'dic') for LexFP in LexFPs]+[(MecabCorpusFP,'corpus') for MecabCorpusFP in MecabCorpusFPs]:
         sys.stderr.write('\n\nNormalising a '+CorpusOrDic+' '+MecabFile+'\n')
-        time.sleep(2)
+        #time.sleep(2)
         FN=os.path.basename(MecabFile)
         NewFN=myModule.change_stem(FN,'.normed')
         NewDir=os.path.join(os.path.dirname(MecabFile),'normed')
@@ -44,8 +44,10 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
             OutFP=OutFP
         else:
             OutFP=os.path.join(NewDir,NewFN)
-        normalise_mecabfile(MecabFile,RelvFts,HClusters,Fts=Fts,OutFP=OutFP+'.tmp',CorpusOrDic=CorpusOrDic,UnnormalisableMarkP=UnnormalisableMarkP,Debug=Debug)
-        os.rename(OutFP+'.tmp',OutFP)
+        OutFP=OutFP+'.tmp'
+            
+        normalise_mecabfile(MecabFile,RelvFts,HClusters,Fts=Fts,OutFP=OutFP,CorpusOrDic=CorpusOrDic,UnnormalisableMarkP=UnnormalisableMarkP,Debug=Debug)
+        os.rename(OutFP,re.sub(r'\.tmp$','',OutFP))
 
 
 def print_clustered_homs(ClusteredHs,OutFP=None,Debug=0):
@@ -180,7 +182,10 @@ def get_clustered_homs_file(LexFP,RelvFts,Frequents=set(),ProbExemplars={},OutFP
         #FtSetLabeled=list(zip(RelvFts,FtSet))
         if (Debug==1 and Cntr%50==0) or Debug>=2 :
             sys.stderr.write(' '.join([MWd.orth for MWd in MWds])+'\n')
-        myCHs=ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
+        try:
+            myCHs=ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
+        except:
+            ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
         ClusteredHs.append(myCHs)
     return ClusteredHs
 
