@@ -17,7 +17,7 @@ imp.reload(mecabtools)
 from probability import probability
 imp.reload(probability)
 
-def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMarkP=True,ProbExemplarFP=None,OutFP=None,Debug=0):
+def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMarkP=True,ProbExemplarFP=None,OutFP=None,Fts=None,Debug=0):
     for FP in (FreqWdFP,ProbExemplarFP):
         if FP is not None and not os.path.isfile(FreqWdFP):
             sys.exit(FP+' does not exist\n')
@@ -44,7 +44,7 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
             OutFP=OutFP
         else:
             OutFP=os.path.join(NewDir,NewFN)
-        normalise_mecabfile(MecabFile,RelvFts,HClusters,OutFP=OutFP+'.tmp',CorpusOrDic=CorpusOrDic,UnnormalisableMarkP=UnnormalisableMarkP,Debug=Debug)
+        normalise_mecabfile(MecabFile,RelvFts,HClusters,Fts=Fts,OutFP=OutFP+'.tmp',CorpusOrDic=CorpusOrDic,UnnormalisableMarkP=UnnormalisableMarkP,Debug=Debug)
         os.rename(OutFP+'.tmp',OutFP)
 
 
@@ -76,7 +76,7 @@ def upto_char(Str,Chars):
             Substr+=Char
     return Substr
 
-def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDic='corpus',Format='corpus',KanaOnly=True,UnnormalisableMarkP=True,Debug=0):
+def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDic='corpus',Format='corpus',KanaOnly=True,UnnormalisableMarkP=True,Fts=None,Debug=0):
     # outfp could be none, true or string
     if not OutFP:
         Out=sys.stdout
@@ -108,7 +108,7 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
             AsItIs=True
         else:
             CommonFtsVals={}
-            Tuple=tuple(mecabtools.pick_feats_fromline(LiNe,RelvFts,CorpusOrDic=CorpusOrDic))
+            Tuple=tuple(mecabtools.pick_feats_fromline(LiNe,RelvFts,Fts=Fts,CorpusOrDic=CorpusOrDic))
             CommonFtsVals.update(Tuple)
             # excluding symbols and unknowns
             if CorpusOrDic=='corpus' and (CommonFtsVals['cat'] in ExclCats or len(CommonFtsVals)<RelvFtCnt):

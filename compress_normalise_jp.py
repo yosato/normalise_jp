@@ -1,8 +1,13 @@
-import imp,sys,os,subprocess,glob,shutil
-import compress_inflecting, normalise_mecab
+import imp,sys,os,subprocess,glob,shutil,re
+import compress_inflecting, normalise_mecab, mecabtools
 from pythonlib_ys import main as myModule
 imp.reload(compress_inflecting)
 imp.reload(normalise_mecab)
+imp.reload(mecabtools)
+
+def insert_el(El,List,Pos):
+    BinarySplits=(List[:Pos],List[Pos:])
+    return BinarySplits[0]+[El]+BinarySplits[1]
 
 def refresh_model(DicDir,ConfDir,ModelDir):
     list(map(os.remove, glob.glob(ModelDir+'/*')))
@@ -11,32 +16,49 @@ def refresh_model(DicDir,ConfDir,ModelDir):
     Cmd=' '.join(['mecab-dict-index -d',ModelDir,'-o',ModelDir])
     subprocess.call(Cmd,shell=True)
 
-def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,ExemplarFP=None,FreqWdFP=None,Debug=0):
+def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWdFP=None,ExtraIndsFts={},Debug=0):
+    Fts=mecabtools.DefFts
+    for (Ind,Ft) in ExtraIndsFts:
+        Fts=insert_el(Ft,Fts,Ind+1)
+    
+    if not any(StdJpTxtFP.endswith(Ext) for Ext in ('.txt','mecab')):
+        sys.exit('input filename has to have the extension of either .txt or .mecab (and has to be text or mecab respectively)')
+    elif 'rawData' not in StdJpTxtFP:
+        sys.exit('dirname \'rawData\' is required')
+    else:
+        # the new stuff will be in 'processedData'
+        CmpMecabDir=os.path.dirname(StdJpTxtFP).replace('rawData','processedData')
+        if not os.path.isdir(CmpMecabDir):
+            os.makedirs(CmpMecabDir)
+        CmpMecabFN=re.sub(r'(.txt|.mecab)','.compressed.mecab',os.path.basename(StdJpTxtFP))
+        TextOrMecab='text' if StdJpTxtFP.endswith('.txt') else 'mecab'
+
     #################################
     ## compression on dic and corpus
     #################################
     ### dic first ###
-    # original dics to compress, inflecting categories only
     InfCats=('adjectives','verbs','auxiliaries')
     DicFPsInf=[os.path.join(OrgDicLoc,Cat+'.csv') for Cat in InfCats ]
     NewDicLoc=OrgDicLoc.replace('rawData','processedData')
     CmpDicFPs=[os.path.join(NewDicLoc,Cat+'.compressed.csv') for Cat in InfCats ]
-    for (DicFPInf,CmpDicFP) in zip(DicFPsInf,CmpDicFPs):
-        Ret=myModule.ask_filenoexist_execute(CmpDicFPs,compress_inflecting.main0,([DicFPInf],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':Debug}))
-    FreshlyDoneP=True if Ret is None else False
+    if DicSkip:
+        FreshlyDoneP=False
+    else:
+    # original dics to compress, inflecting categories only
+        for (DicFPInf,CmpDicFP) in zip(DicFPsInf,CmpDicFPs):
+            Ret=myModule.ask_filenoexist_execute(CmpDicFPs,compress_inflecting.main0,([DicFPInf],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':Debug}))
+        FreshlyDoneP=True if Ret is None else False
+
     # then the corpora
-    # the new stuff will be in 'processedData'
-    CmpMecabDir=os.path.dirname(StdJpTxtFP).replace('rawData','processedData')
-    CmpMecabFN=os.path.basename(StdJpTxtFP).replace('.txt','.compressed.mecab')
     CmpMecabFP=os.path.join(CmpMecabDir, CmpMecabFN)
-    ModelDir=os.path.dirname(CmpMecabDir)+'/models' if ModelDir is None else ModelDir
+    ModelDir=CmpMecabDir+'/models' if ModelDir is None else ModelDir
     if not os.path.isdir(ModelDir):
-        os.path.mkdirs(ModelDir)
-    if not os.path.isfile(os.path.join(ModelDir,'dicrc')) or myModule.prompt_loop_bool('Refreshing the model?',Default=True):
+        os.makedirs(ModelDir)
+    if not os.path.isfile(os.path.join(ModelDir,'dicrc')) or myModule.prompt_loop_bool('Refreshing the model?'):
         ConfLoc=os.path.join(os.path.dirname(OrgDicLoc),'models')
         refresh_model(OrgDicLoc,ConfLoc,ModelDir)
     
-    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,ModelDir,CmpMecabFP],{'Debug':Debug}),LoopBackArg=(0,2),DefaultReuse=not FreshlyDoneP)
+    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,ModelDir,CmpMecabFP],{'Fts':Fts,'TextOrMecab':TextOrMecab,'Debug':Debug}),LoopBackArg=(0,2),DefaultReuse=not FreshlyDoneP)
     ###################################
     ## normalisation of the corpus
     ##################################    
@@ -46,9 +68,10 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,ExemplarFP=None,FreqWdFP=None,Debug
     # an exemplar is a word with a single dominant normalisation case
     ExemplarFP=os.path.join(OrgDicLoc,'exemplars.txt') if not ExemplarFP else ExemplarFP
     # one could limit the targets to frequent words only
-    FreqWdFP=os.path.join(os.path.dirname(StdJpTxtFP),'freqwds.txt') if not FreqWdFP else FreqWdFP
+    FreqWdFP='/links/rawData/mecabStdJp/corpora/freqwds.txt' if not FreqWdFP else FreqWdFP
     # core part
-    normalise_mecab.main0([DicFPNonInf]+CmpDicFPs,[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,CorpusOnly=True,UnnormalisableMarkP=True,Debug=Debug)
+    normalise_mecab.main0([DicFPNonInf]+CmpDicFPs,[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,Fts=Fts,CorpusOnly=True,UnnormalisableMarkP=True,Debug=Debug)
+    print('file outputted to '+FinalMecabFP)
 
 
 def do_mecab_parse(InFP,ModelDir,OutFP,Format='standard'):
@@ -83,41 +106,63 @@ def do_mecab_parse(InFP,ModelDir,OutFP,Format='standard'):
     return SuccessP,StdOut,StdErr
 
 
-def build_compressed_corpus(StdJpTxtFP,StdModelLoc,CmpMecabFP,Debug=0):
-    # do mecab parsing with the standard text
-    StdMecabFP=myModule.change_ext(StdJpTxtFP,'mecab').replace('rawData','processedData')
-    SuccessP,StdOut,StdErr=do_mecab_parse(StdJpTxtFP,StdModelLoc,Format='standard',OutFP=StdMecabFP)
-    if not SuccessP:
-        print('\nmecab process failed with the following error\n')
-        print(StdErr)
-        sys.exit()
-    elif StdErr:
-        print('\nmecab producing the following warning\n')
-        print(StdErr.decode())
+def build_compressed_corpus(StdJpTxtFP,StdModelLoc,CmpMecabFP,TextOrMecab='text',Debug=0,Fts=None):
+    # do mecab parsing with the standard text if necessary
+    if TextOrMecab=='text':
+        StdMecabFP=myModule.change_ext(StdJpTxtFP,'mecab').replace('rawData','processedData')
+        SuccessP,StdOut,StdErr=do_mecab_parse(StdJpTxtFP,StdModelLoc,Format='standard',OutFP=StdMecabFP)
+        if not SuccessP:
+            print('\nmecab process failed with the following error\n')
+            print(StdErr)
+            sys.exit()
+        elif StdErr:
+            print('\nmecab producing the following warning\n')
+            print(StdErr.decode())
+    elif TextOrMecab=='mecab':
+        StdMecabFP=StdJpTxtFP
     # do compression of the above
-    compress_inflecting.main0(StdMecabFP,CorpusOrDic='corpus',OutFP=CmpMecabFP,Debug=Debug)
+    #Out=CmpMecabFP
+    Out=None
+    compress_inflecting.main0(StdMecabFP,CorpusOrDic='corpus',OutFP=Out,Debug=Debug,Fts=Fts)
     return CmpMecabFP
     
 def main():
     import argparse
     ArgPsr=argparse.ArgumentParser(description='''
-     to be written
+    to be written
     ''')
     ArgPsr.add_argument('raw_fp')
     ArgPsr.add_argument('dic_loc')
     ArgPsr.add_argument('--modeldir')
     ArgPsr.add_argument('--exemplar-fp','-e')
     ArgPsr.add_argument('--freqwd-fp','-f')
+    ArgPsr.add_argument('--extra-indsfts',nargs='+')
+    ArgPsr.add_argument('--debug',type=int,default=0)
     Args=ArgPsr.parse_args()
 
     if not os.path.isfile(Args.raw_fp):
         sys.exit('\n\n  source file not found \n')
+    if Args.extra_indsfts:
+        if len(Args.extra_indsfts)%2!=0:
+            sys.exit('extra-indsfts option must consist of even num of args')
+        Evens=[];Odds=[]
+        for Cntr,El in enumerate(Args.extra_indsfts):
+            if Cntr%2==0:
+                if not El.isnumeric():
+                    sys.exit('extra-indsfts option odd num args must be integer')
+                Evens.append(int(El))
+            else:
+                Odds.append(El)
+        ExtraIndsFts=list(zip(Evens,Odds))
+        #if any(type(Key).__name__!='int' for Key in ExtraIndsFts.keys()):
+         #   sys.exit('extra-indsfts option odd num args must be integer')
+        
 
     if (Args.exemplar_fp is not None and not os.path.isfile(Args.exemplar_fp)) or (Args.freqwd_fp is not None and not os.path.isfile(Args.freqwd_fp)):
         sys.exit('\n\n one of the assisting files for normalisations (exemplar, freqwd) not found\n')
         
     
-    main0(Args.raw_fp,Args.dic_loc,ModelDir=Args.modeldir,ExemplarFP=Args.exemplar_fp,FreqWdFP=Args.freqwd_fp)
+    main0(Args.raw_fp,Args.dic_loc,ModelDir=Args.modeldir,ExemplarFP=Args.exemplar_fp,FreqWdFP=Args.freqwd_fp,ExtraIndsFts=ExtraIndsFts,Debug=Args.debug)
 
 if __name__=='__main__':
     main()
