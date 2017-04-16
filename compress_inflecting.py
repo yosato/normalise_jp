@@ -29,11 +29,8 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None):
             NewLines=lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts)
             Out.write('\n'.join(NewLines+['EOS'])+'\n')
         except:
-            Debug=1
-            #try:
-            lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts)
-            #except:
-            #    print('\nsentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\n')
+            sys.stderr.write('\nsentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\n')
+            lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
 
         
 def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0):
@@ -62,9 +59,10 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
             OrgWd=mecabtools.mecabline2mecabwd(Line,Fts=Fts,CorpusOrDic=CorpusOrDic,WithCost=True)
             # THIS IS WHERE RENDERING HAPPENS
             try:
-                NewWd,Suffix=generate_stem_suffix_wds(OrgWd)
+                NewWd,Suffix=OrgWd.divide_stem_suffix_radical()
             except:
-                generate_stem_suffix_wds(OrgWd)
+                OrgWd.divide_stem_suffix_radical()
+
             NecEls=(NewWd.orth,NewWd.cat,NewWd.subcat,NewWd.infpat,NewWd.infform,NewWd.reading)
 
             if CorpusOrDic=='dic' and NecEls in NewWds:
@@ -80,7 +78,7 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
                     ToWrite=Line+'\n'
                 else:
                     if Suffix:
-                        ToWrite=Line+'\n'+Suffix.get_mecabline(CorpusOrDic='corpus')+'\n'
+                        ToWrite=Line+'\n'+Suffix.get_mecabline(CorpusOrDic='corpus')
                     else:
                         ToWrite=Line+'\n'
                 if Debug:    sys.stderr.write('rendered: '+ToWrite+'\n')
@@ -91,18 +89,6 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
         
 #SuffixDicFP='/home/yosato/links/myData/mecabStdJp/dics/compressed/suffixes.csv'
 #SuffixWds=[ mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic') for Line in open(SuffixDicFP) ]
-
-def generate_stem_suffix_wds(OrgMecabWd):
-    (Stem,StemReading),Suffix=OrgMecabWd.divide_stem_suffix_radical()
-
-    StemWd=OrgMecabWd.get_variant([('orth',Stem),('infform','語幹'),('reading',StemReading),('pronunciation',StemReading),('suffix','')])
-    if not nonstem_wd_p(OrgMecabWd):
-        StemWd.infform='語幹'
-
-    SuffixAVs={'orth':Suffix,'lemma':Suffix, 'infform':OrgMecabWd.infform, 'cat':'活用語尾', 'pronunciation':romkan.to_katakana(Suffix)}
-    SuffixWd=mecabtools.MecabWdParse(**SuffixAVs)
-
-    return StemWd,SuffixWd
 
 def nonstem_wd_p(Wd):
     DefBool=False
