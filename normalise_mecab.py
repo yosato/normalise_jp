@@ -44,7 +44,11 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
             OutFP=OutFP
         else:
             OutFP=os.path.join(NewDir,NewFN)
-        normalise_mecabfile(MecabFile,RelvFts,HClusters,Fts=Fts,OutFP=OutFP+'.tmp',CorpusOrDic=CorpusOrDic,UnnormalisableMarkP=UnnormalisableMarkP,Debug=Debug)
+        OutFP=OutFP+'.tmp'
+            
+        OutFP=None
+            
+        normalise_mecabfile(MecabFile,RelvFts,HClusters,Fts=Fts,OutFP=OutFP,CorpusOrDic=CorpusOrDic,UnnormalisableMarkP=UnnormalisableMarkP,Debug=Debug)
         os.rename(OutFP+'.tmp',OutFP)
 
 
@@ -180,7 +184,10 @@ def get_clustered_homs_file(LexFP,RelvFts,Frequents=set(),ProbExemplars={},OutFP
         #FtSetLabeled=list(zip(RelvFts,FtSet))
         if (Debug==1 and Cntr%50==0) or Debug>=2 :
             sys.stderr.write(' '.join([MWd.orth for MWd in MWds])+'\n')
-        myCHs=ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
+        try:
+            myCHs=ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
+        except:
+            ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
         ClusteredHs.append(myCHs)
     return ClusteredHs
 

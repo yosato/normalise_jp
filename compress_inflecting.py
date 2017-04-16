@@ -30,7 +30,7 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None):
             Out.write('\n'.join(NewLines+['EOS'])+'\n')
         except:
             sys.stderr.write('\nsentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\n')
-            lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
+            #lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
 
         
 def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0):
@@ -51,7 +51,7 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
                 if FtsValsDic['infpat']=='一段' and FtsValsDic['infform'] in ('連用形','未然形'):
                     AsIs=True
         if AsIs:
-            ToWrite=Line
+            ToWrite=[Line]
             if Debug>=2:   sys.stderr.write('no change\n')
         else:
             if Debug>=2:
@@ -75,15 +75,14 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
                     print('Rendered, '+OrgWd.orth+' ->'+NewWd.orth+'\n')
                 if CorpusOrDic=='dic':
                     NewWds.add(NecEls)
-                    ToWrite=Line+'\n'
+                    ToWrite=[Line]
                 else:
-                    if Suffix:
-                        ToWrite=Line+'\n'+Suffix.get_mecabline(CorpusOrDic='corpus')
-                    else:
-                        ToWrite=Line+'\n'
+                    ToWrite=[Line]
+                    if Suffix.orth:
+                        ToWrite.append(Suffix.get_mecabline(CorpusOrDic='corpus'))
                 if Debug:    sys.stderr.write('rendered: '+ToWrite+'\n')
 
-        NewLines.append(ToWrite)
+        NewLines.extend(ToWrite)
     return NewLines
 
         

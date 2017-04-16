@@ -121,8 +121,8 @@ def build_compressed_corpus(StdJpTxtFP,StdModelLoc,CmpMecabFP,TextOrMecab='text'
     elif TextOrMecab=='mecab':
         StdMecabFP=StdJpTxtFP
     # do compression of the above
-    #Out=CmpMecabFP
-    Out=None
+    Out=CmpMecabFP
+    #Out=None
     compress_inflecting.main0(StdMecabFP,CorpusOrDic='corpus',OutFP=Out,Debug=Debug,Fts=Fts)
     return CmpMecabFP
     
