@@ -1,4 +1,4 @@
-import imp,re,sys,os
+import imp,re,sys,os, subprocess
 import romkan
 mecabtools=imp.load_source('mecabtools',os.path.join(os.getenv('HOME'),'myProjects/myPythonLibs/mecabtools/mecabtools.py'))
 import mecabtools
@@ -21,21 +21,55 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None):
 
 #    Consts=myModule.prepare_progressconsts(MecabFP)
  #   MLs=None
-    SentChunkGen=mecabtools.generate_sentchunks(MecabFP)
+    ChunkGen=generate_chunks(MecabFP,CorpusOrDic)
     #FSr=open(MecabFP)
 
-    for Cntr,SentChunk in enumerate(SentChunkGen):
+    for Cntr,SentChunk in enumerate(ChunkGen):
         if Debug:
             sys.stderr.write('\nsent '+str(Cntr+1)+' '+''.join([Sent.split('\t')[0] for Sent in SentChunk])+'\n')
-        try:
-            NewLines=lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts)
+        SuccessP,NewLines=lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts)
+        if SuccessP:
             Out.write('\n'.join(NewLines+['EOS'])+'\n')
-        except:
-            sys.stderr.write('\nsentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\n')
-            #lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
+        else:
+            sys.stderr.write('\nsentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\non: '+repr(NewLines.__dict__)+'\n' )
+            #lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
 
+def sort_mecabdic_fts(MecabDicFP,Inds,OutFP):
+    if not all(os.path.exists(FP) for FP in (MecabDicFP,os.path.dirname(OutFP))):
+        sys.exit('one of the files does not exist')
+    
+    Cmd=' '.join(['cat', MecabDicFP, '| sort -k', ' '.join([str(Ind) for Ind in Inds]), '>', OutFP ])
+    Proc=subprocess.Popen(Cmd,shell=True)
+    Proc.communicate()
+            
+def generate_ftchunk(MecabDicFP,FtInds,Out=sys.stdout):
+    SortedDicFP=myModule.get_stem_ext(MecabDicFP.replace('rawData','processedData'))[0]+'.sorted.csv'
+    sort_mecabdic_fts(MecabDicFP,FtInds,OutFP=SortedDicFP)
+    FSr=open(SortedDicFP)
+    Lines=[];PrvRelvFts=None;FstLoop=True
+    for LiNe in FSr:
+        if not FstLoop:
+            Line=LiNe.strip()
+            LineEls=Line.split(',')
+            RelvFts=[LineEls[Ind] for Ind in FtInds]
+            if PrvRelvFts!=RelvFts:
+                yield Lines
+                Lines=[]
+            else:
+                Lines.append(Line)
+                PrvRelvFts=RelvFts
+        else:
+            FstLoop=not FstLoop
+
+def generate_chunks(MecabFP,CorpusOrDic):
+    if CorpusOrDic=='dic':
+        return generate_ftchunk(MecabFP,[-1])
+    elif CorpusOrDic=='corpus':
+        return mecabtools.generate_sentchunks(MecabFP)
+    else:
+        sys.exit('type must be either corpus or dic')
         
-def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0):
+def lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0):
     NewLines=[]
     for Cntr,Line in enumerate(SentChunk):
         if Debug>=2:  sys.stderr.write('Org line: '+Line+'\n')
@@ -63,7 +97,9 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
             try:
                 NewWd,Suffix=OrgWd.divide_stem_suffix_radical()
             except:
-                OrgWd.divide_stem_suffix_radical()
+                FailedWd=OrgWd
+                return (False,FailedWd)
+                #OrgWd.divide_stem_suffix_radical()
 
             NecEls=(NewWd.orth,NewWd.cat,NewWd.subcat,NewWd.infpat,NewWd.infform,NewWd.reading)
 
@@ -82,7 +118,7 @@ def lemmatise_mecabsentchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0
                 if Debug:    sys.stderr.write('rendered: '+'\n'.join(ToWrite)+'\n')
 
         NewLines.extend(ToWrite)
-    return NewLines
+    return (True,NewLines)
 
         
 #SuffixDicFP='/home/yosato/links/myData/mecabStdJp/dics/compressed/suffixes.csv'
