@@ -10,8 +10,6 @@ from pythonlib_ys import main as myModule
 from pythonlib_ys import jp_morph
 
 imp.reload(myModule)
-HomeDir=os.getenv('HOME')
-mecabtools=imp.load_source('mecabtools',os.path.join(HomeDir,'myProjects/myPythonLibs/mecabtools/mecabtools.py'))
 import mecabtools
 imp.reload(mecabtools)
 from probability import probability
