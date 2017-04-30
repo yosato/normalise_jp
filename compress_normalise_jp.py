@@ -1,3 +1,5 @@
+#/usr/bin/env python3
+
 import imp,sys,os,subprocess,glob,shutil,re
 import compress_inflecting, normalise_mecab, mecabtools
 from pythonlib_ys import main as myModule
@@ -54,7 +56,7 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWd
     ModelDir=CmpMecabDir+'/models' if ModelDir is None else ModelDir
     if not os.path.isdir(ModelDir):
         os.makedirs(ModelDir)
-    if not os.path.isfile(os.path.join(ModelDir,'dicrc')) or myModule.prompt_loop_bool('Refreshing the model?'):
+    if not os.path.isfile(os.path.join(ModelDir,'dicrc')) or myModule.prompt_loop_bool('Refreshing the model?',TO=5):
         ConfLoc=os.path.join(os.path.dirname(OrgDicLoc),'models')
         refresh_model(OrgDicLoc,ConfLoc,ModelDir)
     
@@ -156,7 +158,8 @@ def main():
         ExtraIndsFts=list(zip(Evens,Odds))
         #if any(type(Key).__name__!='int' for Key in ExtraIndsFts.keys()):
          #   sys.exit('extra-indsfts option odd num args must be integer')
-        
+    else:
+        ExtraIndsFts=[]
 
     if (Args.exemplar_fp is not None and not os.path.isfile(Args.exemplar_fp)) or (Args.freqwd_fp is not None and not os.path.isfile(Args.freqwd_fp)):
         sys.exit('\n\n one of the assisting files for normalisations (exemplar, freqwd) not found\n')

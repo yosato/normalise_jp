@@ -26,7 +26,7 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
     Frequents=collect_freq_wds(FreqWdFP,1000) if FreqWdFP else set()
     OutFPStem=LexDir+'/'+'--'.join([os.path.basename(LexFP) for LexFP in LexFPs])
     OutFPStem=OutFPStem.replace('rawData','processedData')
-    HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'Debug':Debug}))
+    HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'Debug':Debug}),TO=5)
     if Debug:
         print_clustered_homs(HClusters,OutFP=os.path.join(LexDir,'exemplarless_clusters.txt'),Debug=Debug)
     LexFPs=[] if CorpusOnly else LexFPs
@@ -88,7 +88,7 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
         Out=open(TmpOutFP,'wt')
 
     AlreadyNormedCommonFtsVals=[]
-    MSs,Consts=None,myModule.prepare_progressconsts(FP)
+    #MSs,Consts=None,myModule.prepare_progressconsts(FP)
     FSr=open(FP)
 #    ClusteredHDic={tuple(ClusterH.cluster_on):ClusterH for ClusterH in ClusteredHs}
     RelvFtsVals=[Cluster.cluster_on for Cluster in ClusteredHs]
@@ -98,8 +98,8 @@ def normalise_mecabfile(FP,RelvFts,ClusteredHs,OutFP=None,RelvFtCnt=7,CorpusOrDi
         if Debug:
             if LiNe!='EOS\n':
                 sys.stderr.write('Line '+str(Cntr+1)+': '+LiNe)
-        if Cntr+1%1000==0:
-            MSs=myModule.progress_counter(MSs,Cntr,Consts)
+     #   if Cntr+1%1000==0:
+      #      MSs=myModule.progress_counter(MSs,Cntr,Consts)
         if not LiNe.strip():
             continue
         if CorpusOrDic=='corpus' and LiNe=='EOS\n':

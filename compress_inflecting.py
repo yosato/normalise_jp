@@ -9,7 +9,7 @@ imp.reload(jp_morph)
 
 #Debug=2
 
-def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None):
+def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,StrictP=False):
     NewWds=set()
     if OutFP is True:
         Stem,Ext=myModule.get_stem_ext(MecabFP)
@@ -17,22 +17,35 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None):
     elif OutFP is None or OutFP is False:
         Out=sys.stdout
     else:
-        Out=open(OutFP,'wt')
+        Out=open(OutFP+'.tmp','wt')
 
-#    Consts=myModule.prepare_progressconsts(MecabFP)
- #   MLs=None
     ChunkGen=generate_chunks(MecabFP,CorpusOrDic)
-    #FSr=open(MecabFP)
 
+    ErrorStrs=[]
     for Cntr,SentChunk in enumerate(ChunkGen):
+        if not SentChunk:
+            if Debug:
+                sys.stderr.write('\nsent '+str(Cntr+1)+' is empty\n')
+            continue
         if Debug:
             sys.stderr.write('\nsent '+str(Cntr+1)+' '+''.join([Sent.split('\t')[0] for Sent in SentChunk])+'\n')
-        SuccessP,NewLines=lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts)
+        SuccessP,NewLines=lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts,UnkAbsFtCnt=UnkAbsFtCnt)
         if SuccessP:
             Out.write('\n'.join(NewLines+['EOS'])+'\n')
         else:
-            sys.stderr.write('\nsentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\non: '+repr(NewLines.__dict__)+'\n' )
-            #lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
+            if StrictP:
+                lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
+            else:
+                ErrorStr='sentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\non: '+repr(NewLines.__dict__)
+                sys.stderr.write('\n'+ErrorStr+'\n')
+                ErrorStrs.append(ErrorStr)
+    if OutFP:
+        Out.close()
+        os.rename(OutFP+'.tmp',OutFP)
+
+        if ErrorStrs:
+            ErrorOut=open(OutFP+'.errors','wt')
+            ErrorOut.write('\n'.join(ErrorStrs))
 
 def sort_mecabdic_fts(MecabDicFP,Inds,OutFP):
     if not all(os.path.exists(FP) for FP in (MecabDicFP,os.path.dirname(OutFP))):
@@ -69,7 +82,7 @@ def generate_chunks(MecabFP,CorpusOrDic):
     else:
         sys.exit('type must be either corpus or dic')
         
-def lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,Debug=0):
+def lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,UnkAbsFtCnt=2,Debug=0):
     NewLines=[]
     for Cntr,Line in enumerate(SentChunk):
         if Debug>=2:  sys.stderr.write('Org line: '+Line+'\n')

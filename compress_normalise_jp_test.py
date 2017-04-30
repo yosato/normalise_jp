@@ -1,3 +1,5 @@
+#/usr/bin/env python3
+
 import unittest,imp,sys,os
 from pdb import set_trace
 
