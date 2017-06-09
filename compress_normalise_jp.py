@@ -12,6 +12,8 @@ def insert_el(El,List,Pos):
     return BinarySplits[0]+[El]+BinarySplits[1]
 
 def refresh_model(DicDir,ConfDir,ModelDir):
+    #if not all(os.path.isfile(os.path.join(DicDir,DicFN)) for DicFN in ('non-inflecting.csv','inflecting.csv')):
+        
     list(map(os.remove, glob.glob(ModelDir+'/*')))
     list(map(lambda x:shutil.copy(x,ModelDir), glob.glob(DicDir+'/*.csv')))
     list(map(lambda x:shutil.copy(x,ModelDir), glob.glob(ConfDir+'/*')))
@@ -40,9 +42,11 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWd
     #################################
     ### dic first ###
     InfCats=('adjectives','verbs','auxiliaries')
-    DicFPsInf=[os.path.join(OrgDicLoc,Cat+'.csv') for Cat in InfCats ]
+    DicFPs=glob.glob(os.path.join(OrgDicLoc,'*.csv'))
+    DicFPsInf=[ FP for FP in DicFPs if any(Cat in os.path.basename(FP) for Cat in InfCats) ]
+    assert(DicFPsInf)
     NewDicLoc=OrgDicLoc.replace('rawData','processedData')
-    CmpDicFPs=[os.path.join(NewDicLoc,Cat+'.compressed.csv') for Cat in InfCats ]
+    CmpDicFPs=[ myModule.change_ext(os.path.join(NewDicLoc,os.path.basename(OrgDicFP)),'compressed.csv') for OrgDicFP in DicFPsInf ]
     if DicSkip:
         FreshlyDoneP=False
     else:
@@ -68,7 +72,15 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWd
     DicFPNonInf=os.path.join(OrgDicLoc,'non-inflecting.csv')
     FinalMecabFP=myModule.change_stem(CmpMecabFP,'.normed')
     # an exemplar is a word with a single dominant normalisation case
-    ExemplarFP=os.path.join(OrgDicLoc,'exemplars.txt') if not ExemplarFP else ExemplarFP
+    if not ExemplarFP:
+        DefExemplarFP=os.path.join(OrgDicLoc,'exemplars.txt')
+        if os.path.isfile(DefExemplarFP):
+            ExemplarFP=DefExemplarFP
+        else:
+            sys.stderr.write('\nExemplar file is not found in the dic dir\n')
+            ExemplarFP=None
+    else:
+        ExemplarFP=ExemplarFP
     # one could limit the targets to frequent words only
     FreqWdFP='/links/rawData/mecabStdJp/corpora/freqwds.txt' if not FreqWdFP else FreqWdFP
     # core part
