@@ -2,7 +2,7 @@
 
 import imp,sys,os,subprocess,glob,shutil,re
 import compress_inflecting, normalise_mecab
-from pythonlib_ys import mecabtools
+from mecabtools import mecabtools
 from pythonlib_ys import main as myModule
 imp.reload(compress_inflecting)
 imp.reload(normalise_mecab)

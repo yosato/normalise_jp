@@ -1,6 +1,5 @@
 import imp,re,sys,os, subprocess
 import romkan
-mecabtools=imp.load_source('mecabtools',os.path.join(os.getenv('HOME'),'myProjects/myPythonLibs/mecabtools/mecabtools.py'))
 import mecabtools
 from pythonlib_ys import main as myModule
 from pythonlib_ys import jp_morph
