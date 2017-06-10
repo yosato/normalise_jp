@@ -1,6 +1,6 @@
 import imp,re,sys,os, subprocess
 import romkan
-import mecabtools
+from mecabtools import mecabtools
 from pythonlib_ys import main as myModule
 from pythonlib_ys import jp_morph
 imp.reload(mecabtools)
