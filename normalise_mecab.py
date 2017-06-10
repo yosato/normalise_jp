@@ -10,7 +10,7 @@ from pythonlib_ys import main as myModule
 from pythonlib_ys import jp_morph
 
 imp.reload(myModule)
-import mecabtools
+from mecabtools import mecabtools
 imp.reload(mecabtools)
 from probability import probability
 imp.reload(probability)
