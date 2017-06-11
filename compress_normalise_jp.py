@@ -1,8 +1,8 @@
 #/usr/bin/env python3
 
 import imp,sys,os,subprocess,glob,shutil,re
-import compress_inflecting, normalise_mecab
 from mecabtools import mecabtools
+import compress_inflecting, normalise_mecab
 from pythonlib_ys import main as myModule
 imp.reload(compress_inflecting)
 imp.reload(normalise_mecab)
@@ -47,14 +47,20 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWd
     DicFPsInf=[ FP for FP in DicFPs if any(Cat in os.path.basename(FP) for Cat in InfCats) ]
     assert(DicFPsInf)
     NewDicLoc=OrgDicLoc.replace('rawData','processedData')
+    if not os.path.isdir(NewDicLoc):
+        os.makedirs(NewDicLoc)
     CmpDicFPs=[ myModule.change_ext(os.path.join(NewDicLoc,os.path.basename(OrgDicFP)),'compressed.csv') for OrgDicFP in DicFPsInf ]
+    DicFPNonInf=os.path.join(OrgDicLoc,'non-inflecting.csv')
+
     if DicSkip:
         FreshlyDoneP=False
+        LexFPs=[DicFPNonInf]+DicFPsInf
     else:
-    # original dics to compress, inflecting categories only
+        # original dics to compress, inflecting categories only
         for (DicFPInf,CmpDicFP) in zip(DicFPsInf,CmpDicFPs):
             Ret=myModule.ask_filenoexist_execute(CmpDicFPs,compress_inflecting.main0,([DicFPInf],{'CorpusOrDic':'dic','OutFP':CmpDicFP,'Debug':Debug}))
         FreshlyDoneP=True if Ret is None else False
+        LexFPs=[DicFPNonInf]+CmpDicFPs
 
     # then the corpora
     CmpMecabFP=os.path.join(CmpMecabDir, CmpMecabFN)
@@ -70,7 +76,6 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWd
     ## normalisation of the corpus
     ##################################    
     # for normalisation you include non-inflecting dic as well
-    DicFPNonInf=os.path.join(OrgDicLoc,'non-inflecting.csv')
     FinalMecabFP=myModule.change_stem(CmpMecabFP,'.normed')
     # an exemplar is a word with a single dominant normalisation case
     if not ExemplarFP:
@@ -85,7 +90,7 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWd
     # one could limit the targets to frequent words only
     FreqWdFP='/links/rawData/mecabStdJp/corpora/freqwds.txt' if not FreqWdFP else FreqWdFP
     # core part
-    normalise_mecab.main0([DicFPNonInf]+CmpDicFPs,[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,Fts=Fts,CorpusOnly=True,UnnormalisableMarkP=True,Debug=Debug)
+    normalise_mecab.main0(LexFPs,[CmpMecabFP],ProbExemplarFP=ExemplarFP,FreqWdFP=FreqWdFP,OutFP=FinalMecabFP,Fts=Fts,CorpusOnly=True,UnnormalisableMarkP=True,Debug=Debug)
     print('file outputted to '+FinalMecabFP)
 
 
