@@ -1,4 +1,4 @@
-import imp,re,sys,os, subprocess
+import imp,re,sys,os, subprocess,time
 import romkan
 from mecabtools import mecabtools
 from pythonlib_ys import main as myModule
@@ -8,7 +8,7 @@ imp.reload(jp_morph)
 
 #Debug=2
 
-def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,StrictP=False):
+def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,StrictP=False,OrgReduced=True):
     NewWds=set()
     if OutFP is True:
         Stem,Ext=myModule.get_stem_ext(MecabFP)
@@ -17,6 +17,8 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,St
         Out=sys.stdout
     else:
         Out=open(OutFP+'.tmp','wt')
+    if OrgReduced:
+        OrgReducedFSw=open(OutFP+'.orgreduced','wt')
 
     ChunkGen=generate_chunks(MecabFP,CorpusOrDic)
 
@@ -31,18 +33,31 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,St
         SuccessP,NewLines=lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=Debug,Fts=Fts,UnkAbsFtCnt=UnkAbsFtCnt)
         if SuccessP:
             Out.write('\n'.join(NewLines+['EOS'])+'\n')
+            if OrgReduced:
+                OrgReducedFSw.write('\n'.join(SentChunk)+'\n')
         else:
             if StrictP:
                 lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
             else:
-                ErrorStr='sentence '+str(Cntr+1)+' failed\n'+repr(SentChunk)+'\non: '+repr(NewLines.__dict__)
+                FailedNth=len(NewLines)
+                if len(NewLines)==1:
+                    MiddlePhr='(the first word failed)'
+                else:
+                    MiddlePhr='(starting with the word '+NewLines[0].split()[0]+')'
+                                                                    
+                ErrorStr='Sentence '+str(Cntr+1)+' '+MiddlePhr+' failed on its '+str(FailedNth)+'th line:\n'+repr(NewLines[-1].__dict__)
                 sys.stderr.write('\n'+ErrorStr+'\n')
                 ErrorStrs.append(ErrorStr)
+
+                lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
+
     if OutFP:
         Out.close()
         os.rename(OutFP+'.tmp',OutFP)
 
         if ErrorStrs:
+            print('\nThere were '+str(len(ErrorStrs))+' errors out of '+str(Cntr+1)+' sentences\n')
+            time.sleep(3)
             ErrorOut=open(OutFP+'.errors','wt')
             ErrorOut.write('\n'.join(ErrorStrs))
 
@@ -110,7 +125,9 @@ def lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,UnkAbsFtCnt
                 NewWd,Suffix=OrgWd.divide_stem_suffix_radical()
             except:
                 FailedWd=OrgWd
-                return (False,FailedWd)
+                NewLines.append(FailedWd)
+                OrgWd.divide_stem_suffix_radical()
+                return (False,NewLines)
                 #OrgWd.divide_stem_suffix_radical()
 
             NecEls=(NewWd.orth,NewWd.cat,NewWd.subcat,NewWd.infpat,NewWd.infform,NewWd.reading)

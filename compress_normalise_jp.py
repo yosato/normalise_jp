@@ -42,9 +42,9 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWd
     ## compression on dic and corpus
     #################################
     ### dic first ###
-    InfCats=('adjectives','verbs','auxiliaries')
+    InfCats=('adj','verb','aux','infl')
     DicFPs=glob.glob(os.path.join(OrgDicLoc,'*.csv'))
-    DicFPsInf=[ FP for FP in DicFPs if any(Cat in os.path.basename(FP) for Cat in InfCats) ]
+    DicFPsInf=[ FP for FP in DicFPs if any(Cat in os.path.basename(FP).lower() for Cat in InfCats) ]
     assert(DicFPsInf)
     NewDicLoc=OrgDicLoc.replace('rawData','processedData')
     if not os.path.isdir(NewDicLoc):
@@ -161,7 +161,7 @@ def main():
     Args=ArgPsr.parse_args()
 
     if not os.path.isfile(Args.raw_fp):
-        sys.exit('\n\n  source file not found \n')
+        sys.exit('\n\n  corpus source file '+Args.raw_fp+' not found \n')
     if Args.extra_indsfts:
         if len(Args.extra_indsfts)%2!=0:
             sys.exit('extra-indsfts option must consist of even num of args')
