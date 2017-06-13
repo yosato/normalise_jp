@@ -126,7 +126,7 @@ def lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Fts=None,UnkAbsFtCnt
             except:
                 FailedWd=OrgWd
                 NewLines.append(FailedWd)
-                OrgWd.divide_stem_suffix_radical()
+#                OrgWd.divide_stem_suffix_radical()
                 return (False,NewLines)
                 #OrgWd.divide_stem_suffix_radical()
 
