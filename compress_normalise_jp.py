@@ -71,7 +71,7 @@ def main0(StdJpTxtFP,OrgDicLoc,ModelDir=None,DicSkip=True,ExemplarFP=None,FreqWd
         ConfLoc=os.path.join(os.path.dirname(OrgDicLoc),'models')
         refresh_model(OrgDicLoc,ConfLoc,ModelDir)
     
-    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,ModelDir,CmpMecabFP],{'Fts':Fts,'TextOrMecab':TextOrMecab,'Debug':Debug}),LoopBackArg=(0,2),DefaultReuse=not FreshlyDoneP)
+    FreshlyDoneP=myModule.ask_filenoexist_execute(CmpMecabFP,build_compressed_corpus,([StdJpTxtFP,ModelDir,CmpMecabFP],{'Fts':Fts,'TextOrMecab':TextOrMecab,'Debug':Debug}),LoopBackArg=(0,2),DefaultReuse=False)
     ###################################
     ## normalisation of the corpus
     ##################################    

@@ -34,7 +34,7 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,St
         if SuccessP:
             Out.write('\n'.join(NewLines+['EOS'])+'\n')
             if OrgReduced:
-                OrgReducedFSw.write('\n'.join(SentChunk)+'\n')
+                OrgReducedFSw.write('EOS\n'.join(SentChunk)+'\n')
         else:
             if StrictP:
                 lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
@@ -51,15 +51,21 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,St
 
                 lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
 
+    print('\ncompression for '+MecabFP+' ended\n')            
     if OutFP:
         Out.close()
         os.rename(OutFP+'.tmp',OutFP)
+        print('Output file: '+OutFP+'\n')
 
         if ErrorStrs:
-            print('\nThere were '+str(len(ErrorStrs))+' errors out of '+str(Cntr+1)+' sentences\n')
-            time.sleep(3)
-            ErrorOut=open(OutFP+'.errors','wt')
+            ErrorFP=OutFP+'.errors'
+            print('Error(s) found, error count '+str(len(ErrorStrs))+' out of '+str(Cntr+1)+' sentences. For details see '+ErrorFP+'\n')
+            time.sleep(2)
+            ErrorOut=open(ErrorFP,'wt')
+
             ErrorOut.write('\n'.join(ErrorStrs))
+        else:
+            print('No errors, congrats!\n')
 
 def sort_mecabdic_fts(MecabDicFP,Inds,OutFP):
     if not all(os.path.exists(FP) for FP in (MecabDicFP,os.path.dirname(OutFP))):
