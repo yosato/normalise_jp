@@ -19,9 +19,9 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,St
         Out=open(OutFP+'.tmp','wt')
     if OrgReduced:
         OrgReducedFSw=open(OutFP+'.orgreduced','wt')
-
+    
     ChunkGen=generate_chunks(MecabFP,CorpusOrDic)
-
+    print('\nCompressing '+MecabFP+'\n')
     ErrorStrs=[]
     for Cntr,SentChunk in enumerate(ChunkGen):
         if not SentChunk:
@@ -45,27 +45,27 @@ def main0(MecabFP,CorpusOrDic='dic',OutFP=None,Debug=0,Fts=None,UnkAbsFtCnt=2,St
                 else:
                     MiddlePhr='(starting with the word '+NewLines[0].split()[0]+')'
                                                                     
-                ErrorStr='Sentence '+str(Cntr+1)+' '+MiddlePhr+' failed on its '+str(FailedNth)+'th line:\n'+repr(NewLines[-1].__dict__)
+                ErrorStr='Sentence '+str(Cntr+1)+' '+MiddlePhr+' failed on its '+str(FailedNth)+'th line:\n'+NewLines[-1].get_mecabline()
                 sys.stderr.write('\n'+ErrorStr+'\n')
                 ErrorStrs.append(ErrorStr)
 
                 lemmatise_mecabchunk(SentChunk,CorpusOrDic,NewWds,OutFP,Debug=2,Fts=Fts)
 
-    print('\ncompression for '+MecabFP+' ended\n')            
+    print('\ncompression for '+MecabFP+' ended')            
     if OutFP:
         Out.close()
         os.rename(OutFP+'.tmp',OutFP)
-        print('Output file: '+OutFP+'\n')
+        print('  Output file: '+OutFP+'')
 
         if ErrorStrs:
             ErrorFP=OutFP+'.errors'
-            print('Error(s) found, error count '+str(len(ErrorStrs))+' out of '+str(Cntr+1)+' sentences. For details see '+ErrorFP+'\n')
+            print('  Error(s) found, error count '+str(len(ErrorStrs))+' out of '+str(Cntr+1)+' sentences. For details see '+ErrorFP+'\n')
             time.sleep(2)
             ErrorOut=open(ErrorFP,'wt')
 
             ErrorOut.write('\n'.join(ErrorStrs))
         else:
-            print('No errors, congrats!\n')
+            print('  No errors, congrats!\n')
 
 def sort_mecabdic_fts(MecabDicFP,Inds,OutFP):
     if not all(os.path.exists(FP) for FP in (MecabDicFP,os.path.dirname(OutFP))):

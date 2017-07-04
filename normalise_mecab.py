@@ -26,12 +26,12 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
     Frequents=collect_freq_wds(FreqWdFP,1000) if FreqWdFP else set()
     OutFPStem=LexDir+'/'+'--'.join([os.path.basename(LexFP) for LexFP in LexFPs])
     OutFPStem=OutFPStem.replace('rawData','processedData')
-    HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'Debug':Debug}),TO=5)
+    HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'Debug':Debug}),Message='Use the compiled normalisation clusters?',TO=5)
     if Debug:
         print_clustered_homs(HClusters,OutFP=os.path.join(LexDir,'exemplarless_clusters.txt'),Debug=Debug)
     LexFPs=[] if CorpusOnly else LexFPs
     for MecabFile,CorpusOrDic in [(LexFP,'dic') for LexFP in LexFPs]+[(MecabCorpusFP,'corpus') for MecabCorpusFP in MecabCorpusFPs]:
-        sys.stderr.write('\n\nNormalising a '+CorpusOrDic+' '+MecabFile+'\n')
+        sys.stderr.write('\nNormalising a '+CorpusOrDic+' '+MecabFile+'...\n')
         #time.sleep(2)
         FN=os.path.basename(MecabFile)
         NewFN=myModule.change_stem(FN,'.normed')
