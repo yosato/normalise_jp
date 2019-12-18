@@ -1,13 +1,15 @@
 import sys,os,imp
 from collections import defaultdict,OrderedDict
-sys.path.append('/home/yosato/myProjects/myPythonLibs/mecabtools')
+if '/home/yosato/myProjects/myPythonLibs' not in sys.path:
+    sys.path=['/home/yosato/myProjects/myPythonLibs']+sys.path
+#import mecabtools
 from mecabtools import mecabtools
 imp.reload(mecabtools)
 
 def load_pickle(PickledFP):
     return pickle.load(open(PickledFP,'rb'))
 
-def main(MecabCorpusFPs,FreqCutOff=10,LemmaBaseP=True):
+def main(MecabCorpusFPs,FreqCutOff=10,LemmaBaseP=True,Debug=False):
     Homs=defaultdict(dict)
     for FP in MecabCorpusFPs:
         with open(FP) as FSr:
@@ -24,16 +26,25 @@ def main(MecabCorpusFPs,FreqCutOff=10,LemmaBaseP=True):
                 try:
                     Wd=mecabtools.mecabline2mecabwd(LiNe.strip(),CorpusOrDic='corpus')
                 except:
-                    mecabtools.mecabline2mecabwd(LiNe.strip(),CorpusOrDic='corpus')
+                    #mecabtools.mecabline2mecabwd(LiNe.strip(),CorpusOrDic='corpus')
+                    continue
                 if Wd.cat=='記号':
                     continue
 
-                if 'pronunciation' in Wd.__dict__:
-                    Repr=Wd.lemma if LemmaBaseP else Wd.orth
-                    if Repr not in Homs[Wd.pronunciation]:
-                        Homs[Wd.pronunciation].update({Repr:[Wd,1]})
-                    else:
-                        Homs[Wd.pronunciation][Repr][1]+=1
+                if LemmaBaseP and Wd.cat in ('形容詞','動詞'):
+                    if Debug:
+                        sys.stdout.write(Wd.orth+'\n')
+                    Repr=Wd.derive_lemma_pronunciation()
+                    if Debug:
+                        sys.stdout.write(Repr+'\n')
+                    Derived=Wd.lemma
+                else:
+                    Repr=Wd.pronunciation
+                    Derived=Wd.orth
+                if Derived not in Homs[Repr]:
+                    Homs[Repr].update({Derived:[Wd,1]})
+                else:
+                    Homs[Repr][Derived][1]+=1
                             
     AmbIndexedHoms=defaultdict(dict)
     for Reading,HomsCnts in Homs.items():
@@ -54,8 +65,7 @@ if __name__=='__main__':
     if not MecabCorpusFPs:
         print('stuff does not exist\n')
         sys.exit()
-    #Homs=main(MecabCorpusFPs)
-    #with open('hello.pickle','wb') as FSw:
-    #    pickle.dump(Homs,FSw)
-    Homs=load_pickle('hello.pickle')
-    print()
+    Homs=main(MecabCorpusFPs)
+    with open(os.path.join(Args.inpu_dir,'homophone_stats.pickle'),'wb') as FSw:
+        pickle.dump(Homs,FSw)
+

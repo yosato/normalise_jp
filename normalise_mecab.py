@@ -24,7 +24,9 @@ def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMar
     RelvFts=('cat','subcat','subcat2','sem','infform','infpat','pronunciation')
     ProbExemplars=get_exemplars(ProbExemplarFP) if ProbExemplarFP else None
     Frequents=collect_freq_wds(FreqWdFP,1000) if FreqWdFP else set()
-    OutFPStem=LexDir+'/'+'--'.join([os.path.basename(LexFP) for LexFP in LexFPs])
+    LexFPsForName=LexFPs if len(LexFPs)<=10 else LexFPs[:5]+['--']+LexFPs[-5:]
+    OutFNStem='--'.join([os.path.basename(LexFP) for LexFP in LexFPsForName])
+    OutFPStem=LexDir+'/'+OutFNStem
     OutFPStem=OutFPStem.replace('rawData','processedData')
     HClusters,_=myModule.ask_filenoexist_execute_pickle(OutFPStem+'.pickle',get_clustered_homs,([LexFPs,RelvFts],{'Frequents':Frequents,'ProbExemplars':ProbExemplars,'Debug':Debug}),Message='Use the compiled normalisation clusters?',TO=5)
     if Debug:
