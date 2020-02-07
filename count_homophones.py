@@ -22,15 +22,15 @@ def chain_partition(ListOrg,relation,IndsOnly=False):
     Partitions=set()
     List=copy.copy(list(enumerate(ListOrg)))
     while List:
-        El1=List[0]
-        Partition={El1}
-        for El in List:
-            if relation(El1[1],El[1]):
-                Partition.add((El))
+        TgtEl=List[0]
+        Partition={TgtEl}
+        for El in List[1:]:
+            if relation(TgtEl[1],El[1]):
+                Partition.add(El)
 
         Partitions.add(frozenset(Partition))
-        for El in Partition:
-            List.remove(El)
+        for ElInPart in Partition:
+            List.remove(ElInPart)
     if IndsOnly:
         RedPartitions=set()
         for Part in Partitions:
@@ -62,27 +62,14 @@ class CatHomStat:
         self.infforms=[Hom.infform for Hom in HomsFreqs.keys()]
         self.orthtypes=[char_composition(Orth) for Orth in self.orths]
         self.orthsfreqs=self.count_orths()
+        self.okuriganavariant_stats=self.get_variantstats(self.identify_variants(self.orths,jp_morph.okurigana_variants_p)) if len([Comp for Comp in self.orthtypes if Comp == {'hiragana','han'}])>=2 else []
+        
     def count_orths(self):
         OrthsCounts=defaultdict(int)
         for Cntr,Orth in enumerate(self.orths):
             OrthsCounts[Orth]+=self.freqs[Cntr]
         return OrthsCounts
 
-class PlainCatHomstat(CatHomStat):
-    def __init__(self,PronCat,HomsFreqs):
-        super().__init__(PronCat,HomsFreqs)
-    
-class LemmatisedCatHomstat(CatHomStat):
-    def __init__(self,PronCat,HomsFreqs):
-        super().__init__(PronCat,HomsFreqs)
-
-        self.okuriganavariant_stats=self.get_variantstats(self.identify_variants(self.orths,jp_morph.okurigana_variants_p)) if len([Comp for Comp in self.orthtypes if Comp == {'hiragana','han'}])>=2 else []
-        
-        if self.cat in ('動詞','助動詞','形容詞'):
-            self.infformvariant_stats=self.get_variantstats(self.identify_variants(self.homs,infform_variants_p))
-        SubcatStats=self.get_variantstats(self.identify_variants(self.homs,subcat_variants_p,MultipleOnly=False))
-        self.subcat_stats={Stat.variants[0].subcat:Stat for Stat in SubcatStats}
-        
     def get_variantstats(self,Partitions):
         VStats=[]
         for Part in Partitions:
@@ -96,17 +83,38 @@ class LemmatisedCatHomstat(CatHomStat):
         Partitions=chain_partition(TgtList,bool_func)
         Thresh=1 if MultipleOnly else 0
         return {Part for Part in Partitions if len(Part)>Thresh}
+            
+class PlainCatHomstat(CatHomStat):
+    def __init__(self,PronCat,HomsFreqs):
+        super().__init__(PronCat,HomsFreqs)
+    
+class LemmatisedCatHomstat(CatHomStat):
+    def __init__(self,PronCat,HomsFreqs):
+        super().__init__(PronCat,HomsFreqs)
+
+        self.okuriganavariant_stats=self.get_variantstats(self.identify_variants(self.orths,jp_morph.okurigana_variants_p)) if len([Comp for Comp in self.orthtypes if Comp == {'hiragana','han'}])>=2 else []
+        
+        self.infformvariant_stats=self.get_variantstats(self.identify_variants(self.homs,infform_variants_p))
+        SubcatStats=self.get_variantstats(self.identify_variants(self.homs,subcat_variants_p,MultipleOnly=False))
+        self.subcat_stats={Stat.variants[0].subcat:Stat for Stat in SubcatStats}
+        
+
 
 class GeneralHomStat:    
     def __init__(self,HomStats):
         self.pron=list(HomStats.values())[0].pron
         self.catsfreqs={Cat:HomStat.freqs for (Cat,HomStat) in HomStats.items()}
+        self.overallfreq=sum([HomStat.overallfreq for HomStat in HomStats.values()])
+        self.supercatsfreqs={Cat:sum(Freqs) for (Cat,Freqs) in self.catsfreqs.items()}
         self.catsorths={Cat:HomStat.orths for (Cat,HomStat) in HomStats.items()}
         self.catssubcats={Cat:HomStat.subcats for (Cat,HomStat) in HomStats.items()}
         self.catsinfforms={Cat:HomStat.infforms for (Cat,HomStat) in HomStats.items()}
         self.orthsfreqs={Cat:HomStat.orthsfreqs for (Cat,HomStat) in HomStats.items()}
         self.homstats=HomStats
         self.superorthsfreqs=self.count_orths()
+        self.domcat=pseudo_unambiguous(self.supercatsfreqs,500)
+        self.domcatfreq=self.supercatsfreqs[self.domcat] if self.domcat else self.overallfreq
+
     def count_orths(self):
         OrthsCounts={}
         for (Cat,OrthsFreqs) in self.orthsfreqs.items():
@@ -123,7 +131,7 @@ class GeneralHomStat:
 def load_pickle(PickledFP):
     return pickle.load(open(PickledFP,'rb'))
 
-def main(MecabCorpusFPs,TagType='ipa',FreqCutOffRate=0,LemmaBaseP=True,Debug=False,StrictP=False,LemmatiseP=True):
+def main(MecabCorpusFPs,TagType='ipa',FreqCutOffRate=0,LemmaBaseP=True,Debug=False,StrictP=False,LemmatiseP=False):
     #Homs=defaultdict(dict)
     OrderedFNs=[]
     # consider the first of the sorted FPs' dir as OrgDir
@@ -184,9 +192,8 @@ def collate_homophones(WdObjsFreqs,LemmatiseP):
     return Homs
                     
 def mymeasure(Freqs):
-    MaxFreq=Freqs
-    NormedFreqs=[Freq/MaxFreq for Freq in Freqs]
-    
+    return entropy(Freqs)+sum(Freqs)/100
+
     
 
 
@@ -209,6 +216,21 @@ def entropy(Freqs):
     Probs=[Freq/sum(Freqs) for Freq in Freqs]
     return -sum([Prob*math.log(Prob,2) for Prob in Probs])
 
+def pseudo_unambiguous(CatsFreqs,Ratio,MaxRequired=None):
+    MaxInData=max(CatsFreqs.values())
+    if MaxRequired is None:
+        MaxRequired=Ratio
+    if MaxInData<MaxRequired:
+        return None
+    for Cat,Freq in CatsFreqs.items():
+        if Freq==MaxInData:
+            MaxCat=Cat
+        else:
+            if Freq>(MaxInData/Ratio):
+                return None
+
+    return MaxCat
+
 if __name__=='__main__':
     import argparse,glob,pickle
     Psr=argparse.ArgumentParser()
@@ -221,7 +243,9 @@ if __name__=='__main__':
     if not MecabCorpusFPs:
         print('stuff does not exist\n')
         sys.exit()
+
     GenHomStats=main(MecabCorpusFPs,TagType=Args.tag_type,LemmatiseP=Args.lemmatise)
+
     def all_hiragana_p(Strs):
             for Str in Strs:
                 if not myModule.all_of_chartypes_p(Str,['hiragana']):
@@ -240,9 +264,40 @@ if __name__=='__main__':
             if any(myModule.at_least_one_of_chartypes_p(Str,['katakana']) for Str in Strs):
                 return False
             return True
+
+    for GenHomStat in sorted(GenHomStats,key=lambda x:x.pron):
+        for Cat,HomStat in GenHomStat.homstats.items():
+            if HomStat.okuriganavariant_stats:
+                Cat=HomStat.cat
+                for VarStat in HomStat.okuriganavariant_stats:
+                    Strs=[]
+                    for Variant,Freq in zip(VarStat.variants,VarStat.freqs):
+                        Strs.append(Variant+' '+str(Freq))
+                    sys.stdout.write(Cat+': '+' / '.join(Strs)+'\n')
+        
+    OrthAmbStats=[];CatAmbStats=[];UnambStats=[];UniOrthStats=[]    
     for GenHomStat in GenHomStats:
-        print(GenHomStat.__dict__)
-         
-#    print_stuff(HomStats,filter_in=eval(Args.filter_in))
+        if len(GenHomStat.superorthsfreqs)==1:
+            UniOrthStats.append(GenHomStat)
+            continue
+        if GenHomStat.domcat:
+            DomCat=GenHomStat.domcat
+            if len([Orth for Orth in GenHomStat.homstats[DomCat].orthsfreqs.keys() if myModule.at_least_one_of_chartypes_p(Orth,['han'])]) <= 1 and len([Orth for Orth in GenHomStat.homstats[DomCat].orthsfreqs.keys() if myModule.all_of_chartypes_p(Orth,['katakana'])]) == 0:
+                UnambStats.append(GenHomStat)
+            else:
+                DomOrth=pseudo_unambiguous(GenHomStat.orthsfreqs[DomCat],500)
+                if DomOrth:
+                    UnambStats.append(GenHomStat)
+                else:
+                    OrthAmbStats.append(GenHomStat)
+        else:
+            CatAmbStats.append(GenHomStat)
+
+    SortedUnambStats=sorted(UnambStats,key=lambda a:a.domcatfreq,reverse=True)        
+    for UnambStat in SortedUnambStats:
+        print(UnambStat.__dict__)
+            
+            
+#    print_stuff(HomStats,filter_in=eval(Args.filter_in))p
 
 
