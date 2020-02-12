@@ -50,7 +50,7 @@ if __name__=='__main__':
             if len([Orth for Orth in GenHomStat.homstats[DomCat].orthsfreqs.keys() if myModule.at_least_one_of_chartypes_p(Orth,['han'])]) <= 1 and len([Orth for Orth in GenHomStat.homstats[DomCat].orthsfreqs.keys() if myModule.all_of_chartypes_p(Orth,['katakana'])]) == 0:
                 UnambStats.append(GenHomStat)
             else:
-                DomOrth=pseudo_unambiguous(GenHomStat.orthsfreqs[DomCat],500)
+                DomOrth=count_homophones.pseudo_unambiguous(GenHomStat.orthsfreqs[DomCat],500)
                 if DomOrth:
                     UnambStats.append(GenHomStat)
                 else:
@@ -58,8 +58,8 @@ if __name__=='__main__':
         else:
             CatAmbStats.append(GenHomStat)
 
-    Out=open(OutFP,'wt') if OutFP else sys.stdout
+    Out=open(Args.out_fp,'wt') if Args.out_fp else sys.stdout
         
     SortedUnambStats=sorted(UnambStats,key=lambda a:a.domcatfreq,reverse=True)        
     for UnambStat in SortedUnambStats:
-        Out.write(UnambStat.__dict__+'\n')
+        Out.write(repr(UnambStat.__dict__)+'\n')
