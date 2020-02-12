@@ -10,6 +10,7 @@ if __name__=='__main__':
     Psr.add_argument('--lemmatise',action='store_true')
     Psr.add_argument('--tag-type',default='ipa')
     Psr.add_argument('--filter-in',default=None)
+    Psr.add_argument('--out-fp')
     Args=Psr.parse_args()
     MecabCorpusFPs=glob.glob(Args.input_dir+'/*.mecab')
     if not MecabCorpusFPs:
@@ -57,6 +58,8 @@ if __name__=='__main__':
         else:
             CatAmbStats.append(GenHomStat)
 
+    Out=open(OutFP,'wt') if OutFP else sys.stdout
+        
     SortedUnambStats=sorted(UnambStats,key=lambda a:a.domcatfreq,reverse=True)        
     for UnambStat in SortedUnambStats:
-        print(UnambStat.__dict__)
+        Out.write(UnambStat.__dict__+'\n')
