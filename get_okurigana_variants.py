@@ -8,10 +8,12 @@ def main(GenHomStats):
             if HomStat.okuriganavariant_stats:
                 Cat=HomStat.cat
                 for VarStat in HomStat.okuriganavariant_stats:
-                    Strs=[]
-                    for Variant,Freq in zip(VarStat.variants,VarStat.freqs):
-                        Strs.append(Variant+' '+str(Freq))
-                    sys.stdout.write(Cat+': '+' / '.join(Strs)+'\n')
+                    OrthFreqStrs=[];CatStrs=[]
+                    for Ind,Variant,Freq in zip(VarStat.inds,VarStat.variants,VarStat.freqs):
+                        OrthFreqStrs.append(Variant+' '+str(Freq))
+                        CatStrs.append(','.join([HomStat.subcats[Ind],HomStat.homs[Ind].infpat,HomStat.infforms[Ind]]))
+                    sys.stdout.write(' / '.join(OrthFreqStrs)+'\t')
+                    sys.stdout.write(Cat+'('+' / '.join(CatStrs)+')\n')
 
 if __name__=='__main__':
     import argparse,glob,pickle
