@@ -35,9 +35,12 @@ class CatHomStat:
     def __init__(self,PronCat,HomsFreqs,OrthIdenticalSubcatMergeP=False):
         self.pron=PronCat[0]
         self.cat=PronCat[1]
-        HomsFreqs=sorted(HomsFreqs,key=lambda x:x[0].orth)
-        self.homs=list(HomsFreqs.keys())
-        self.freqs=list(HomsFreqs.values())
+        HomsFreqs=sorted(HomsFreqs.items(),key=lambda x:x[0].orth)
+        Homs=[];Freqs=[]
+        for Hom,Freq in HomsFreqs:
+            Homs.append(Hom);Freqs.append(Freq)
+        self.homs=Homs
+        self.freqs=Freqs
         if OrthIdenticalSubcatMergeP:
             self.merge_orthidentical_subcats()
         else:
@@ -54,26 +57,30 @@ class CatHomStat:
         if self.subcatmerged:
             sys.stderr.write('already merged\n')
         else:
-            if len(self.homs)==1 or len(self.orths)==len(set(self.orths)):
-                sys.stderr.write('no need to merge dups\n')
-            else:
-                SubcatMgdHoms=[];SubcatMgdFreqs=[];SubcatMgdOrths=[];PrvOrth=''
-                for Ind,(Hom,Freq) in enumerate(zip(self.homs,self.freqs)):
-                    EmbeddedHoms=[Hom];EmbeddedFreq=Freq
-                    if Hom.orth==PrvOrth:
-                        EmbeddedHoms.append(Hom)
-                        EmbeddedFreqs+=Freq
-                        if Ind+1==len(self.homs):
-                            SubcatMgdOrths.append(Hom.orth)
-                            SubcatMgdHoms.append(EmbeddedHoms)
-                            SubcatMgdFreqs.append(EmbeddedFreq)
+            SubcatMgdHoms=[];SubcatMgdFreqs=[];SubcatMgdOrths=[];PrvOrth=''
+            for Ind,(Hom,Freq) in enumerate(zip(self.homs,self.freqs)):
+                if Ind==0:
+                    EmbeddedHoms=[Hom];EmbeddedOrth=Hom.orth;EmbeddedFreq=Freq
+                else:
+                    if Hom.orth==PrvHom.orth:
+                        EmbeddedHoms.append(PrvHom)
+                        EmbeddedFreq+=PrvFreq
                     else:
-                        SubcatMgdOrths(Hom.orth)
+                        SubcatMgdOrths.append(EmbeddedOrth)
                         SubcatMgdHoms.append(EmbeddedHoms)
-                        SubcatMgdFreqs.append(EmbeddedFreqs)
+                        SubcatMgdFreqs.append(EmbeddedFreq)
+                        EmbeddedHoms=[Hom];EmbeddedOrth=Hom.orth;EmbeddedFreq=Freq
+                PrvHom=Hom;PrvFreq=Freq;PrvOrth=Hom.orth
+            SubcatMgdOrths.append(EmbeddedOrth)
+            SubcatMgdHoms.append(EmbeddedHoms)
+            SubcatMgdFreqs.append(EmbeddedFreq)
+
+            assert (len(SubcatMgdHoms)==len(SubcatMgdFreqs) and len(SubcatMgdFreqs)==len(SubcatMgdOrths))
+            
             self.subcatmerged_orths=SubcatMgdOrths
             self.subcatmerged_homs=SubcatMgdHoms
             self.subcatmerged_freqs=SubcatMgdFreqs
+
             self.subcatmerged=True
     def count_orths(self):
         OrthsCounts=defaultdict(int)
