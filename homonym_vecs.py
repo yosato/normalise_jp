@@ -79,15 +79,15 @@ def main(CorpusFP,HomStats,CBowModel,Window=5,UpToPercent=None):
                     continue
                 # then get the average of the context vecs
                 Vec,CxtWds,NotFoundsJustNow=context2vec(Wds,Ind,Window,CBowModel)
-                if NotFoundsJustNow:
-                    NotFoundTokenCnt+=len(NotFoundsJustNow)
-                    if UnitIncrement>=5:
-                        NotFoundTokenRate=NotFoundTokenCnt/TokenCnt
-                        if NotFoundTokenRate>.2:
-                            break
-                    NotFounds.update(set(NotFoundsJustNow))
-                    if len(NotFoundsJustNow)/len(CxtWds)>.1:
-                        continue
+#                if NotFoundsJustNow:
+ #                   NotFoundTokenCnt+=len(NotFoundsJustNow)
+  #                  if UnitIncrement>=5:
+   #                     NotFoundTokenRate=NotFoundTokenCnt/TokenCnt
+    #                    if NotFoundTokenRate>.2:
+     #                       break
+      #              NotFounds.update(set(NotFoundsJustNow))
+       #             if len(NotFoundsJustNow)/len(CxtWds)>.1:
+        #                continue
 
                 Pron=RelvHomStat.pron
                 if Pron not in HomVecs:
