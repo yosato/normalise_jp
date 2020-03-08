@@ -43,7 +43,7 @@ def filter_and_output_probunamb(GenHomStats):
                 else:
                     OrthAmbStats.append(GenHomStat)
         else:
-            CatAmbStat2;78;36M2;78;36ms.append(GenHomStat)
+            CatAmbStats.append(GenHomStat)
 
     Out=open(Args.out_fp,'wt') if Args.out_fp else sys.stdout
         
@@ -56,7 +56,7 @@ if __name__=='__main__':
     import argparse,glob,pickle
     Psr=argparse.ArgumentParser()
     Psr.add_argument('input_dir')
-    Psr.add_argument('criterion',default='probUnamb',[])
+    Psr.add_argument('--criterion',default='probUnamb')
     Psr.add_argument('--lemmatise',action='store_true')
     Psr.add_argument('--tag-type',default='ipa')
     Psr.add_argument('--filter-in',default=None)
@@ -68,6 +68,6 @@ if __name__=='__main__':
         print('stuff does not exist\n')
         sys.exit()
 
-    HomStats=count_homophones.main(MecabCorpusFPs,TagType=Args.tag_type,LemmatiseP=Args.lemmatise,GenStatsP.Args.genstats_p)
+    HomStats=count_homophones.main(MecabCorpusFPs,TagType=Args.tag_type,LemmatiseP=Args.lemmatise)
 
     filter_and_output(HomStats,Criterion=Args.criterion)

@@ -125,8 +125,8 @@ class GeneralHomStat:
         self.overallfreq=sum([HomStat.overallfreq for HomStat in HomStats.values()])
         self.supercatsfreqs={Cat:sum(Freqs) for (Cat,Freqs) in self.catsfreqs.items()}
         self.catsorths={Cat:HomStat.orths for (Cat,HomStat) in HomStats.items()}
-        self.catssubcats={Cat:HomStat.subcats for (Cat,HomStat) in HomStats.items()}
-        self.catsinfforms={Cat:HomStat.infforms for (Cat,HomStat) in HomStats.items()}
+       # self.catssubcats={Cat:[Hom.subcat for Hom in HomStat.homs] for (Cat,HomStat) in HomStats.items()}
+        #self.catsinfforms={Cat:HomStat.infforms for (Cat,HomStat) in HomStats.items()}
         self.orthsfreqs={Cat:HomStat.orthsfreqs for (Cat,HomStat) in HomStats.items()}
         self.homstats=HomStats
         self.superorthsfreqs=self.count_orths()
