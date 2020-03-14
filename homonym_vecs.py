@@ -1,8 +1,9 @@
+
 import gensim.models
 import numpy as np
 import pickle,sys,os,imp,json
 from collections import defaultdict
-sys.path.append('/home/yosato/myProjects/normalise_jp')
+#sys.path.append('/home/yosato/myProjects/normalise_jp')
 import count_homophones
 from  pythonlib_ys import main as myModule
 from pythonlib_ys import sort_large_file
@@ -102,11 +103,13 @@ def get_relevant_homstat(Orth,Cat,Pron,HomStats):
         RelvHomStat=HomStats[0]
     return RelvHomStat
 
-
+def get_linecount0(FP):
+    return sum(1 for i in open(FP, 'rb'))
 def get_homs_contexts_mvecs(CorpusFP,HomStats,CBowModel,Window,OutJsonFP):
-    LineCnt=3950000 #myModule.get_linecount(CorpusFP)
+    LineCnt=get_linecount0(CorpusFP)
     OrthsHomStats=homstats2orthshomstats(HomStats)
     Unit=LineCnt//100
+    Unprocessables=set();Omits=set()
     TmpFP=OutJsonFP+'.tmp'
     OutJsonFSw=open(TmpFP,'wt')
     NotFounds=set();PercUnit=0;TokenCntSoFar=0
@@ -125,25 +128,26 @@ def get_homs_contexts_mvecs(CorpusFP,HomStats,CBowModel,Window,OutJsonFP):
                 continue
             for Ind,Wd in enumerate(Wds):
                 Orth,Cat,Pron=Wd.split(':')
+                if Cat=='記号' or Pron=='*' or Wd in Unprocessables or Wd in Omits:
+                    continue
                 if Orth in OrthsHomStats:
                     HomStats=OrthsHomStats[Orth]
-                    HomStats=[HomStat.merge_orthidentical_subcats() for HomStat in HomStats if HomStat.cat==Cat]
-                    assert(len(HomStats)==1)
-                    HomStat=HomStats[0]
-                    if HomStat and not approximately_unambiguous_p(HomStat.freqs) and sum(HomStat.freqs)>500:
+                    HitHomStats=[HomStat for HomStat in HomStats if HomStat.cat==Cat and HomStat.pron==Pron]
+                    if len(HitHomStats)!=1:
+                        Unprocessables.add(Wd)
+                        continue
+                    HomStat=HitHomStats[0]
+                    if not (HomStat and not approximately_unambiguous_p(HomStat.freqs) and sum(HomStat.freqs)>500):
+                        Omits.add(Wd)
+                    else:    
                         Orths=[Wd[0] for Wd in Wds]
-                        CxtWds=get_context_wds(Wds,Ind,Window)
+                        CxtWds=get_context_wds(Orths,Ind,Window)
                         MeanVec,NotFoundsJustNow=get_meanvector_when_available(CxtWds[0]+CxtWds[1],CBowModel)
-                        OutJsonFSw.write(json.dumps([Pron,Orth,[CxtWds[0],CxtWds[1]],MeanVec.tolist()],ensure_ascii=False)+'\n')
                         if NotFoundsJustNow:
-                # NotFoundTokenCnt+=len(NotFoundsJustNow)
-                  #  if UnitIncrement>=5:
-                   #     NotFoundTokenRate=NotFoundTokenCnt/TokenCnt
-                    #    if NotFoundTokenRate>.2:
-                     #       break
                             NotFounds.update(set(NotFoundsJustNow))
-                    #if len(NotFoundsJustNow)/len(CxtWds)>.1:
-                
+                        if len(NotFoundsJustNow)>TokenCntInLine/4:
+                            break
+                        OutJsonFSw.write(json.dumps([Pron,Orth,[CxtWds[0],CxtWds[1]],MeanVec.tolist()],ensure_ascii=False)+'\n')
 
     OutJsonFSw.close()
    # print('sorting the output file...')
