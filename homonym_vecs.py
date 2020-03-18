@@ -1,7 +1,7 @@
-
 import gensim.models
 import numpy as np
-import pickle,sys,os,imp,json
+import romkan
+import pickle,sys,os,imp,json,glob
 from collections import defaultdict
 #sys.path.append('/home/yosato/myProjects/normalise_jp')
 import count_homophones
@@ -11,61 +11,99 @@ imp.reload(count_homophones)
 imp.reload(myModule)
 
 
-def main(SMecabCorpusFP,HomStats,CBowModel,Window=5,UpToPercent=None,OutDir=None,DoRTextP=True):
-#    print('getting global counts...')
-    #StatsFP=SMecabCorpusFP+'_stats.pickle'
-#    PronsOrthsCnts,_=myModule.ask_filenoexist_execute_pickle(StatsFP,get_global_stats,([SMecabCorpusFP,HomStats],{}))
-#    OrthsHomCnts,SortedHoms,TokenCnt=filter_global_stats(PronsOrthsCnts)
-    OutFN=os.path.basename(SMecabCorpusFP)+'_contexts_mvecs.json'
-    OutJsonFP=os.path.dirname(SMecabCorpusFP)+'/'+OutFN if OutDir is None else os.path.join(OutDir,OutFN)
+def main(SMecabCorpusDir,HomStats,CBowModel,Window=5,UpToPercent=None,OutDir=None,DoRTextP=True):
+    OutFN=os.path.basename(SMecabCorpusDir)+'_contexts_mvecs.json'
+    OutJsonFP=SMecabCorpusDir+'/'+OutFN if OutDir is None else os.path.join(OutDir,OutFN)
 #    print('finding mean vectors for contexts...')
-    myModule.ask_filenoexist_execute(OutJsonFP,get_homs_contexts_mvecs,([SMecabCorpusFP,HomStats,CBowModel,Window,OutJsonFP],{}))
+    myModule.ask_filenoexist_execute([OutJsonFP,OutJsonFP+'.pickle'],get_homs_contexts_mvecs,([SMecabCorpusDir,HomStats,CBowModel,Window],{'OutJsonFP':OutJsonFP}))
     
     if DoRTextP:
-        get_homs_in_files(SortedHoms,OutJsonFP)
-        
-
-def get_homs_in_files(SortedHoms,JsonFP,UpTo=300):
-    for Cntr,Hom in enumerate(SortedHoms):
-        if Cntr>UpTo:
-            break
-        else:
-            HomvecTxtsDir=os.path.join(os.path.dirname(JsonFP),os.path.basename(JsonFP)+'_homvectxts')
-            if not os.path.isdir(HomvecTxtsDir):
-                os.makedirs(HomvecTxtsDir)
-            OutFP=os.path.join(HomvecTxtsDir,Hom)
-            get_hom_in_string(Hom,JsonFP,OutFP)
-
-def get_hom_in_string(Hom,JsonFP,OutFP):
-    Fnd=False;PrvHom=''
-    FSw=open(OutFP,'wt')
-    with open(JsonFP) as FSr:
-        for LiNe in FSr:
-            HomVecs=json.loads(LiNe)
-            if HomVecs[0]==Hom:
-                if not Fnd:
-                    Fnd=True
-                    HomCntr=0
-                HomCntr+=1
-                FSw.write(HomVecs[1]+'_'+HomVecs[0]+'_'+str(HomCntr)+'\t'+' '.join([str(Num) for Num in HomVecs[3]])+'\n')
-            elif Fnd:
+        TxtDir=os.path.join(os.path.dirname(OutJsonFP),os.path.basename(OutJsonFP)+'_txt')
+        if not os.path.isdir(TxtDir):
+            os.mkdir(TxtDir)
+        SortedP=json_sorted_p(OutJsonFP)
+        HomsOrthsCnts=myModule.load_pickle(OutJsonFP+'.pickle')
+        HomsCnts=sorted([(Hom,sum(OrthsCnts.values())) for (Hom,OrthsCnts) in HomsOrthsCnts.items()])
+        CntSoFar=0
+        for Cntr,(Hom,Cnt) in enumerate(HomsCnts):
+            if Cntr>1000:
                 break
-    FSw.close()        
-        
-def filter_global_stats(PronsOrthsCnts,OrthVar=2,HomCntLowerBound=400,HomCntUpperBound=10000):
-    OrthsHomCnts=defaultdict(list);Homs=set();Orths=set();TokenCnt=0
-    for Hom,OrthsCnts in PronsOrthsCnts.items():
-        if len(OrthsCnts)==1:
-            continue
-        HomTotalCnt=sum(OrthsCnts.values())
-        if HomTotalCnt<HomCntLowerBound or HomTotalCnt>HomCntUpperBound:
-            continue
-        TokenCnt+=HomTotalCnt
-        Homs.add(Hom)
-        for Orth in OrthsCnts.keys():
-            OrthsHomCnts[Orth]=[Hom,OrthsCnts[Orth],HomTotalCnt]
+            OrthsVecs=get_hom_in_file(Hom,OutJsonFP,FstPosition=CntSoFar,AssumeSortedP=SortedP)
+            RomHom=romkan.to_roma(Hom)
+            OutHomFP=os.path.join(TxtDir,'homvecs_'+RomHom)
+            with open(OutHomFP,'wt') as FSw:
+                FSw.write(stringify_hom_vecs(OrthsVecs))
+            CntSoFar+=Cnt
 
-    return OrthsHomCnts,sorted(Homs),TokenCnt
+def jump_to_linum(FSr,LiNum):
+    for Cntr,LiNe in enumerate(FSr):
+        if Cntr==LiNum:
+            return FSr
+                        
+def json_sorted_p(JsonFP,UpTo=50000):
+    with open(JsonFP) as FSr:
+        PrvHeader=json.loads(FSr.readline())[0]
+        for Cntr,LiNe in enumerate(FSr):
+            CurHeader=json.loads(LiNe)[0]
+            if CurHeader==PrvHeader:
+                PrvHeader=CurHeader
+            else:
+                if CurHeader>PrvHeader:
+                    if Cntr>UpTo:
+                        break
+                    PrvHeader=CurHeader
+                    continue
+                else:
+                    return False
+        return True
+
+def get_hom_in_file(TgtHom,JsonFP,UpTo=100000,FstPosition=0,AssumeSortedP=False):
+    print('trying to find homs for '+TgtHom)
+    Fnd=False;FndCnt=0
+    OrthsVecs=defaultdict(list)
+    with open(JsonFP) as FSr:
+        if AssumeSortedP:
+            jump_to_linum(FSr,FstPosition)
+        for Cntr,LiNe in enumerate(FSr):
+            if FndCnt>UpTo:
+                break
+            CurHom=LiNe.split(',')[0].lstrip('[').strip('"')
+            if AssumeSortedP and Fnd and CurHom!=TgtHom:
+                break
+            if CurHom==TgtHom:
+                HomVecs=json.loads(LiNe)
+                FndCnt+=1
+                if FndCnt%100==0:
+                    print('found '+str(FndCnt)+' homs')
+                if AssumeSortedP and not Fnd:
+                    Fnd=True
+                OrthsVecs[HomVecs[1]].append(HomVecs[3])
+    return OrthsVecs            
+                    
+def generate_homvecs_json(FSr):
+    Vecs=[]
+    HomVec=json.loads(FSr.readline())
+    PrvHom=HomVec[0]
+    for LiNe in FSr:
+        HomVec=json.loads(LiNe)
+        if HomVec[0]==PrvHom:
+            Vec=HomVec[2]
+            Vecs.append(Vec)
+        else:
+            yield Vecs
+            
+                
+def stringify_hom_vecs(OrthsVecs,UpToPerOrth=1000):
+    Str=''
+    for OrthCntr,(Orth,Vecs) in enumerate(OrthsVecs.items()):
+        for VecCntr,Vec in enumerate(Vecs):
+            if VecCntr>=UpToPerOrth:
+                break
+            Line=Orth+str(OrthCntr)+'_'+str(VecCntr)+'\t'+'\t'.join([str(Num) for Num in Vec])
+            Str+=Line+'\n'
+            
+    return Str
+        
                     
 def context2vec(CxtVecs):
     return np.average(CxtVecs)
@@ -94,73 +132,122 @@ def homstats2orthshomstats(HomStats):
             OrthsHomStats[Orth].append(HomStat)
     return OrthsHomStats
 
-def get_relevant_homstat(Orth,Cat,Pron,HomStats):
-    if len(HomStats)>=2:
-        RelvHomStats=[HomStat for HomStat in HomStats if HomStat.cat==Cat]
-        assert(len(RelvHomStats)==1)
-        RelvHomStat=RelvHomStats[0]
-    else:
-        RelvHomStat=HomStats[0]
-    return RelvHomStat
+def get_linecount0(FPs):
+    Total=0
+    for FP in FPs:
+        Total+=sum(1 for i in open(FP, 'rb'))
+    return Total
 
-def get_linecount0(FP):
-    return sum(1 for i in open(FP, 'rb'))
-def get_homs_contexts_mvecs(CorpusFP,HomStats,CBowModel,Window,OutJsonFP):
-    LineCnt=get_linecount0(CorpusFP)
-    OrthsHomStats=homstats2orthshomstats(HomStats)
-    Unit=LineCnt//100
+def get_homs_contexts_mvecs(CorpusDir,HomStats,CBowModel,Window,OutJsonFP,SortP=True):
+    FPs=glob.glob(CorpusDir+'/*.mecabsimple')
     Unprocessables=set();Omits=set()
     TmpFP=OutJsonFP+'.tmp'
     OutJsonFSw=open(TmpFP,'wt')
+    LineCnt=get_linecount0(FPs)
+    print('Total line count: '+str(LineCnt))
+    Unit=LineCnt//100
+    OrthsHomStats=homstats2orthshomstats(HomStats)
     NotFounds=set();PercUnit=0;TokenCntSoFar=0
-    with open(CorpusFP,'rt') as FSr:
-        for Cntr,LiNe in enumerate(FSr):
-            if not LiNe.strip():
-                continue
-            if Cntr!=0 and Cntr%Unit==0:
-                PercUnit+=1
-                print(str(Cntr+1)+' or '+str(PercUnit)+'% done')
-
-            Wds=LiNe.strip().split()
-            TokenCntInLine=len(Wds)
-            TokenCntSoFar+=TokenCntInLine
-            if TokenCntInLine<10:
-                continue
-            for Ind,Wd in enumerate(Wds):
-                Orth,Cat,Pron=Wd.split(':')
-                if Cat=='記号' or Pron=='*' or Wd in Unprocessables or Wd in Omits:
+    SelectedTokenStats={}
+    for CorpusFP in FPs:
+        with open(CorpusFP,'rt') as FSr:
+            for Cntr,LiNe in enumerate(FSr):
+    #            if Cntr<1303900:
+    #                continue
+                if not LiNe.strip():
                     continue
-                if Orth in OrthsHomStats:
-                    HomStats=OrthsHomStats[Orth]
-                    HitHomStats=[HomStat for HomStat in HomStats if HomStat.cat==Cat and HomStat.pron==Pron]
-                    if len(HitHomStats)!=1:
+                if Cntr!=0 and Cntr%Unit==0:
+                    PercUnit+=1
+                    print(str(Cntr+1)+' or '+str(PercUnit)+'% done')
+
+                Wds=LiNe.strip().split()
+                TokenCntInLine=len(Wds)
+                TokenCntSoFar+=TokenCntInLine
+                if TokenCntInLine<10:
+                    continue
+                for Ind,Wd in enumerate(Wds):
+                    if Wd in Unprocessables or Wd in Omits:
+                        continue
+                    OrthCatPron=Wd.split(':')
+                    if len(OrthCatPron)!=3:
+                        print('funny wd, '+os.path.basename(CorpusFP)+':'+str(Cntr+1)+': '+Wd)
                         Unprocessables.add(Wd)
                         continue
-                    HomStat=HitHomStats[0]
-                    if not (HomStat and not approximately_unambiguous_p(HomStat.freqs) and sum(HomStat.freqs)>500):
-                        Omits.add(Wd)
-                    else:    
-                        Orths=[Wd[0] for Wd in Wds]
-                        CxtWds=get_context_wds(Orths,Ind,Window)
-                        MeanVec,NotFoundsJustNow=get_meanvector_when_available(CxtWds[0]+CxtWds[1],CBowModel)
-                        if NotFoundsJustNow:
-                            NotFounds.update(set(NotFoundsJustNow))
-                        if len(NotFoundsJustNow)>TokenCntInLine/4:
-                            break
-                        OutJsonFSw.write(json.dumps([Pron,Orth,[CxtWds[0],CxtWds[1]],MeanVec.tolist()],ensure_ascii=False)+'\n')
+                    Orth,Cat,Pron=OrthCatPron
+                    if Cat=='記号' or Pron=='*':
+                        continue
+                    if Orth in OrthsHomStats:
+                        HomStats=OrthsHomStats[Orth]
+                        HitHomStats=[HomStat for HomStat in HomStats if HomStat.cat==Cat and HomStat.pron==Pron]
+                        if len(HitHomStats)!=1:
+                            Unprocessables.add(Wd)
+                            continue
+                        HomStat=HitHomStats[0]
+                        ApproxAmbInds=approximate_ambiguity(HomStat.freqs)
+                        if not (HomStat and len(ApproxAmbInds)>=2 and sum(HomStat.freqs)>500 and orth_variety_cond(HomStat,ApproxAmbInds)):
+                            Omits.add(Wd)
+                        else:
+                            if Pron not in SelectedTokenStats:
+                                SelectedTokenStats[Pron]={Orth:1}
+                            elif Orth not in SelectedTokenStats[Pron]:
+                                SelectedTokenStats[Pron][Orth]=1
+                            else:
+                                SelectedTokenStats[Pron][Orth]+=1
+                            Orths=[Wd[0] for Wd in Wds]
+                            CxtWds=get_context_wds(Orths,Ind,Window)
+                            MeanVec,NotFoundsJustNow=get_meanvector_when_available(CxtWds[0]+CxtWds[1],CBowModel)
+                            if NotFoundsJustNow:
+                                NotFounds.update(set(NotFoundsJustNow))
+
+                            if len(NotFoundsJustNow)>TokenCntInLine/4:
+                                break
+                            OutJsonFSw.write(json.dumps([Pron,Orth,[CxtWds[0],CxtWds[1]],MeanVec.tolist()],ensure_ascii=False)+'\n')
 
     OutJsonFSw.close()
+    myModule.dump_pickle(SelectedTokenStats,OutJsonFP+'.pickle')
+
+    print('bulk of the processing done, now sorting')
+
+    if SortP:
+        sort_large_file.batch_sort(TmpFP,OutJsonFP)
+        if os.path.getsize(TmpFP)==os.path.getsize(OutJsonFP):
+            os.remove(TmpFP)
+    else:
+        os.rename(TmpFP,OutJsonFP)
+
+    
+
+def orth_variety_cond(HomStat,ApproxAmbInds):
+    RelvHomCnt=len(ApproxAmbInds)
+    if RelvHomCnt>=4:
+        return True
+    else:
+        OrthTypesNotWanted2=[
+            {frozenset({'hiragana'}),frozenset({'han'})},
+                        {frozenset({'katakana'})},
+            {frozenset({'hiragana'}),frozenset({'han','hiragana'})}
+            ]
+        OrthTypesNotWanted3=[
+            {frozenset({'hiragana'}),frozenset({'han'}),frozenset({'katakana'})},
+            {frozenset({'hiragana'}),frozenset({'han','hiragana'}),frozenset({'katakana'})}
+        ]
+        RelvOrthTypes={frozenset(OrthType) for (Ind,OrthType) in enumerate(HomStat.orthtypes) if Ind in ApproxAmbInds}
+        if (RelvHomCnt==2 and RelvOrthTypes in OrthTypesNotWanted2) or (RelvHomCnt==3 and RelvOrthTypes in OrthTypesNotWanted3):
+            return False
+        else:
+            return True
+        
+            
    # print('sorting the output file...')
    # sort_large_file.batch_sort(TmpFP,OutJsonFP)
    # os.remove(TmpFP)
 
-def approximately_unambiguous_p(Nums,ThreshRatio=.01):
+def approximate_ambiguity(Nums,ThreshRatio=.01):
     if len(Nums)==1:
-        return True
+        return [0]
     TotalNum=sum(Nums)
     Thresh=TotalNum*ThreshRatio
-    Bool=True if len([Num for Num in Nums if Num > Thresh])==1 else False
-    return Bool
+    return [Ind for (Ind,Num) in enumerate(Nums) if Num > Thresh]
     
    
 def remove_outliers(OrthsVecs):
@@ -186,59 +273,22 @@ def output_text_per_hom(HomsMVecs):
 if __name__=='__main__':
     import argparse as ap
     Psr=ap.ArgumentParser()
-    Psr.add_argument('corpus_fp')
+    Psr.add_argument('corpus_dir')
     Psr.add_argument('homstats_fp')
     Psr.add_argument('model_fp')
     Psr.add_argument('--up-to-percent',default=None,type=int)
     Psr.add_argument('--out-dir',default=None)
     Psr.add_argument('--text-output',default=False)
     Args=Psr.parse_args()
-    if not os.path.isfile(Args.corpus_fp):
-        sys.exit('corpus file '+Args.corpus_fp+' does not exist\n')
+    if not os.path.isdir(Args.corpus_dir):
+        sys.exit('corpus dir '+Args.corpus_dir+' does not exist\n')
     print('loading models')
     HomStats=pickle.load(open(Args.homstats_fp,'br'))
     Model=gensim.models.Word2Vec.load(Args.model_fp)
-    main(Args.corpus_fp,HomStats,Model,UpToPercent=Args.up_to_percent,OutDir=Args.out_dir)
+    main(Args.corpus_dir,HomStats,Model,UpToPercent=Args.up_to_percent,OutDir=Args.out_dir)
     #VecsFP=Args.corpus_fp+'.homvecs.pickle'
     #print('saving vecs in '+VecsFP)
     #myModule.dump_pickle(HomsMVecs,VecsFP)
     
     #if Args.text_output:
     #    output_text_per_hom()
-
-def get_global_stats(CorpusFP,HomStats):
-#    LineCnt=myModule.get_linecount(CorpusFP)
-    LineCnt=3950000
-    Unit=LineCnt//100;UnitIncrement=0
-        # extract homophones on the pos level and put them in orth-based dict
-    OrthsHomStats=get_target_homophones(HomStats)
-    TokenCnt=0
-    PronsOrthsCnts=defaultdict(dict)
-    with open(CorpusFP) as FSr:
-        for Cntr,Sent in enumerate(FSr):
-            if Cntr!=0 and (Cntr+1)%Unit==0:
-                UnitIncrement+=1
-                print(str(Cntr+1)+'/'+str(LineCnt)+'('+str(UnitIncrement)+'%)')
-
-            Wds= Sent.split()
-            TokenCnt+=len(Wds)
-            
-            for Ind,Wd in enumerate(Wds):
-                # check if the word is one of the homophone targets and if so, return that homstat, if not, move to the next one
-                Pron,PoS,Orth=Wd.split(':')
-                RelvHomStat=get_relevant_homstat(Pron,PoS,Orth,OrthsHomStats)
-                if not RelvHomStat:
-                    continue
-                # then get the average of the context vecs
-       
-                #Pron=RelvHomStat.pron
-                
-                if Pron not in PronsOrthsCnts:
-                    PronsOrthsCnts[Pron]={Orth:1}
-                else:
-                    if Orth not in PronsOrthsCnts[Pron]:
-                        PronsOrthsCnts[Pron][Orth]=1
-                    else:
-                        PronsOrthsCnts[Pron][Orth]+=1
-
-    return PronsOrthsCnts
