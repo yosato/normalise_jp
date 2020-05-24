@@ -1,7 +1,6 @@
-import gensim.models
 import numpy as np
 import romkan
-import pickle,sys,os,imp,json,glob
+import re,pickle,sys,os,imp,json,glob
 from collections import defaultdict
 #sys.path.append('/home/yosato/myProjects/normalise_jp')
 import count_homophones
@@ -10,33 +9,134 @@ from pythonlib_ys import sort_large_file
 imp.reload(count_homophones)
 imp.reload(myModule)
 
+def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,OutDir=None,DoRTextP=True):
+#    HomStats,Model=load_models(HomFP,ModelFP)
 
-def main(SMecabCorpusDir,HomStats,Model,ModelType='cbow',Window=5,UpToPercent=None,OutDir=None,DoRTextP=True):
+    HomStats=pickle.load(open(Args.homstats_fp,'br'))
     
-    OutFNStem=os.path.basename(SMecabCorpusDir)+'_contexts_mvecs'
-    OutFN=OutFNStem+'_'+ModelType+'.json'
-    PickedTokenStatsFN=OutFNStem+'_pickedtokenstats.pickle'
-    OutJsonFP,PickedTokenStatsFP=[(SMecabCorpusDir if OutDir is None else OutDir)+'/'+FN for FN in (OutFN,PickedTokenStatsFN)]
+    OutFNStem=os.path.basename(SMecabCorpusDir)+'_contexts_mvecs_'
+    OutJsonFN=OutFNStem+ModelType+'.json'
+    PickedTokenStatsFN=OutFNStem+'pickedtokenstats.pickle'
+    OutDir=OutDir if OutDir is not None else SMecabCorpusDir
+    FPPair=[os.path.join(OutDir,FN) for FN in (OutJsonFN,PickedTokenStatsFN)]
+    OutJsonFP=FPPair[0]
 #    print('finding mean vectors for contexts...')
-    myModule.ask_filenoexist_execute([OutJsonFP,PickedTokenStatsFP],get_homs_contexts_mvecs,([SMecabCorpusDir,HomStats,Model,Window],{'OutJsonFP':OutJsonFP}))
-    
+    myModule.ask_filenoexist_execute(FPPair,get_homs_contexts_mvecs,([SMecabCorpusDir,HomStats,ModelPath,ModelType],{'OutJsonFP':OutJsonFP}))
+
     if DoRTextP:
-        TxtDir=os.path.join(os.path.dirname(OutJsonFP),OutFNStem+'_txtfiles')
+        print('We write out the results in text too...')
+        output_text_per_hom(OutJsonFP)
+    
+
+def get_homs_contexts_mvecs(CorpusDir,HomStats,ModelType,OutJsonFP,SortP=True):
+    FPs=glob.glob(CorpusDir+'/*.mecabsimple')
+    Unprocessables=set();Omits=set()
+    TmpFP=OutJsonFP+'.tmp'
+    OutJsonFSw=open(TmpFP,'wt')
+    LineCnt=get_linecount0(FPs)
+    print('Total line count: '+str(LineCnt))
+    Unit=LineCnt//100
+    OrthsHomStats=homstats2orthshomstats(HomStats)
+    NotFounds=set();PercUnit=0;TokenCntSoFar=0
+    SelectedTokenStats={};CumCntr==0
+    for CorpusFP in FPs:
+        with open(CorpusFP,'rt') as FSr:
+            CumCntr+=Cntr
+            for Cntr,LiNe in enumerate(FSr):
+    #            if Cntr<1303900:
+    #                continue
+                if not LiNe.strip():
+                    continue
+                CumCntrInside=CumCntr+Cntr
+                if CumCntrInside%1000==0:
+                    print(CumCntr+Cntr)
+                if CumCntrInside%Unit==0:
+                    PercUnit+=1
+                    print(str(CumCntrInside+1)+' or '+str(PercUnit)+'% done')
+
+                WdTriples=[tuple(WdTStr.split(':')) for WdTStr in LiNe.strip().split()]
+                TokenCntInLine=len(WdTriples)
+                if TokenCntInLine<10 or TokenCntInLine>60:
+                    continue
+                BadWdTriples={WdT for WdT in WdTriples if len(WdT)!=3}
+                if BadWdTriples:
+                    Unprocessables.update(BadWdTriples)
+                    if BadWdTriples:
+                        continue
+                    else:
+                        WdTriples=[WdT for WdT in WdTriples if WdT not in BadWdTriples]
+
+                TokenCntSoFar+=TokenCntInLine
+                RelvInds=[]
+                for Ind,WdT in enumerate(WdTriples):
+                    if WdT in Unprocessables or WdT in Omits:
+                        continue
+                    Orth,Cat,Pron=WdT
+                    if Cat in ('記号','助詞','助動詞','代名詞') or Pron=='*':
+                        continue
+                    if Pron in SelectedTokenStats and Orth in SelectedTokenStats[Pron] and SelectedTokenStats[Pron][Orth]>1000:
+                        continue
+
+                    if Orth in OrthsHomStats:
+                        HomStats=OrthsHomStats[Orth]
+                        HitHomStats=[HomStat for HomStat in HomStats if HomStat.cat==Cat and HomStat.pron==Pron]
+                        if len(HitHomStats)!=1:
+                            Unprocessables.add(WdT)
+                            continue
+                        HomStat=HitHomStats[0]
+                        ApproxAmbInds=approximate_ambiguity(HomStat.freqs)
+                        if not (HomStat and len(ApproxAmbInds)>=2 and sum(HomStat.freqs)>1000 and orth_variety_cond(HomStat,ApproxAmbInds)):
+                            Omits.add(WdT)
+                        else:
+                            if Pron not in SelectedTokenStats:
+                                SelectedTokenStats[Pron]={Orth:1}
+                            elif Orth not in SelectedTokenStats[Pron]:
+                                SelectedTokenStats[Pron][Orth]=1
+                            else:
+                                SelectedTokenStats[Pron][Orth]+=1
+                            RelvInds.append(Ind)
+
+                if RelvInds:
+                    Orths=[WdT[0] for WdT in WdTriples]
+                    Vecs=ElmoModel.embed_sentence(Orths)
+                    MeanVec=np.mean(Vecs,axis=0)
+                    for Ind in RelvInds:
+                        Pron=WdTriples[Ind][2]
+                        OutJsonFSw.write(json.dumps([Pron,Ind,Orths,MeanVec.tolist()[Ind]],ensure_ascii=False)+'\n')
+
+    OutJsonFSw.close()
+    myModule.dump_pickle(SelectedTokenStats,OutJsonFP+'.pickle')
+
+    print('bulk of the processing done, now sorting')
+
+    if SortP:
+        sort_large_file.batch_sort(TmpFP,OutJsonFP)
+        if os.path.getsize(TmpFP)==os.path.getsize(OutJsonFP):
+            os.remove(TmpFP)
+    else:
+        os.rename(TmpFP,OutJsonFP)
+
+
+        
+
+def output_text_per_hom(OutJsonFP,Max=3000):
+        TxtDir=os.path.join(os.path.dirname(OutJsonFP),os.path.basename(OutJsonFP)+'_txt')
         if not os.path.isdir(TxtDir):
             os.mkdir(TxtDir)
-        SortedP=json_sorted_p(OutJsonFP)
-        HomsOrthsCnts=myModule.load_pickle(PickedTokenStatsFP)
-        HomsCnts=sorted([(Hom,sum(OrthsCnts.values())) for (Hom,OrthsCnts) in HomsOrthsCnts.items()])
-        CntSoFar=0
-        for Cntr,(Hom,Cnt) in enumerate(HomsCnts):
-            if Cntr>1000:
-                break
-            OrthsVecs=get_hom_in_file(Hom,OutJsonFP,FstPosition=CntSoFar,AssumeSortedP=SortedP)
-            RomHom=romkan.to_roma(Hom)
-            OutHomFP=os.path.join(TxtDir,'homvecs_'+RomHom)
-            with open(OutHomFP,'wt') as FSw:
-                FSw.write(stringify_hom_vecs(OrthsVecs))
-            CntSoFar+=Cnt
+        CntSoFar=0;Cntr=0
+        with open(OutJsonFP) as FSr:
+            #print('retrieving homvecs for '+Hom+'...')
+            while FSr or Cntr<Max:
+                FSr,OrthsVecs,Hom,Cnt=get_hom_in_file(FSr,OutJsonFP,FstPosition=CntSoFar)
+                OrthVarCnt=len(OrthsVecs)
+                if OrthVarCnt>=2 and Cnt>100:
+                    print('For '+Hom+', we found '+str(OrthVarCnt)+' orths, '+str(Cnt)+' items, now writing out...')
+                    RomHom=romkan.to_roma(Hom)
+                    OutHomFP=os.path.join(TxtDir,'homvecs_'+RomHom)
+                    with open(OutHomFP,'wt') as FSw:
+                        FSw.write(stringify_hom_vecs(OrthsVecs))
+                        print('... done, fp: '+OutHomFP)
+                    CntSoFar+=Cnt;Cntr+=1
 
 def jump_to_linum(FSr,LiNum):
     for Cntr,LiNe in enumerate(FSr):
@@ -60,28 +160,20 @@ def json_sorted_p(JsonFP,UpTo=50000):
                     return False
         return True
 
-def get_hom_in_file(TgtHom,JsonFP,UpTo=100000,FstPosition=0,AssumeSortedP=False):
-    print('trying to find homs for '+TgtHom)
-    Fnd=False;FndCnt=0
+def get_hom_in_file(FSr,JsonFP,UpTo=100000,FstPosition=0,AssumeSortedP=False):
+    #print('trying to find homs for '+TgtHom)
+   # Fnd=False;FndCnt=0
     OrthsVecs=defaultdict(list)
-    with open(JsonFP) as FSr:
-        if AssumeSortedP:
-            jump_to_linum(FSr,FstPosition)
-        for Cntr,LiNe in enumerate(FSr):
-            if FndCnt>UpTo:
-                break
-            CurHom=LiNe.split(',')[0].lstrip('[').strip('"')
-            if AssumeSortedP and Fnd and CurHom!=TgtHom:
-                break
-            if CurHom==TgtHom:
-                HomVecs=json.loads(LiNe)
-                FndCnt+=1
-                if FndCnt%100==0:
-                    print('found '+str(FndCnt)+' homs')
-                if AssumeSortedP and not Fnd:
-                    Fnd=True
-                OrthsVecs[HomVecs[1]].append(HomVecs[3])
-    return OrthsVecs            
+ #    TgtHomRegex='["'+TgtHom
+    FSr,Chunk,LineCnt,_=myModule.pop_chunk_from_stream(FSr,Pattern=',',Type='cont')
+    for Line in Chunk.strip().split('\n'):
+        HomVecs=json.loads(Line)
+        #assert(HomVecs[0]==TgtHom)
+        Orth=HomVecs[2][HomVecs[1]]
+        OrthsVecs[Orth].append(HomVecs[3])
+ #   print(str(Cntr+1)+' found')
+    return FSr,OrthsVecs,HomVecs[0],LineCnt
+
                     
 def generate_homvecs_json(FSr):
     Vecs=[]
@@ -141,82 +233,7 @@ def get_linecount0(FPs):
         Total+=sum(1 for i in open(FP, 'rb'))
     return Total
 
-def get_homs_contexts_mvecs(CorpusDir,HomStats,CBowModel,Window,OutJsonFP,SortP=True):
-    FPs=glob.glob(CorpusDir+'/*.mecabsimple')
-    Unprocessables=set();Omits=set()
-    TmpFP=OutJsonFP+'.tmp'
-    OutJsonFSw=open(TmpFP,'wt')
-    LineCnt=get_linecount0(FPs)
-    print('Total line count: '+str(LineCnt))
-    Unit=LineCnt//100
-    OrthsHomStats=homstats2orthshomstats(HomStats)
-    NotFounds=set();PercUnit=0;TokenCntSoFar=0
-    SelectedTokenStats={}
-    for CorpusFP in FPs:
-        with open(CorpusFP,'rt') as FSr:
-            for Cntr,LiNe in enumerate(FSr):
-    #            if Cntr<1303900:
-    #                continue
-                if not LiNe.strip():
-                    continue
-                if Cntr!=0 and Cntr%Unit==0:
-                    PercUnit+=1
-                    print(str(Cntr+1)+' or '+str(PercUnit)+'% done')
 
-                Wds=LiNe.strip().split()
-                TokenCntInLine=len(Wds)
-                TokenCntSoFar+=TokenCntInLine
-                if TokenCntInLine<10:
-                    continue
-                for Ind,Wd in enumerate(Wds):
-                    if Wd in Unprocessables or Wd in Omits:
-                        continue
-                    OrthCatPron=Wd.split(':')
-                    if len(OrthCatPron)!=3:
-                        print('funny wd, '+os.path.basename(CorpusFP)+':'+str(Cntr+1)+': '+Wd)
-                        Unprocessables.add(Wd)
-                        continue
-                    Orth,Cat,Pron=OrthCatPron
-                    if Cat=='記号' or Pron=='*':
-                        continue
-                    if Orth in OrthsHomStats:
-                        HomStats=OrthsHomStats[Orth]
-                        HitHomStats=[HomStat for HomStat in HomStats if HomStat.cat==Cat and HomStat.pron==Pron]
-                        if len(HitHomStats)!=1:
-                            Unprocessables.add(Wd)
-                            continue
-                        HomStat=HitHomStats[0]
-                        ApproxAmbInds=approximate_ambiguity(HomStat.freqs)
-                        if not (HomStat and len(ApproxAmbInds)>=2 and sum(HomStat.freqs)>500 and orth_variety_cond(HomStat,ApproxAmbInds)):
-                            Omits.add(Wd)
-                        else:
-                            if Pron not in SelectedTokenStats:
-                                SelectedTokenStats[Pron]={Orth:1}
-                            elif Orth not in SelectedTokenStats[Pron]:
-                                SelectedTokenStats[Pron][Orth]=1
-                            else:
-                                SelectedTokenStats[Pron][Orth]+=1
-                            Orths=[Wd.split(':')[0] for Wd in Wds]
-                            CxtWds=get_context_wds(Orths,Ind,Window)
-                            MeanVec,NotFoundsJustNow=get_meanvector_when_available(CxtWds[0]+CxtWds[1],CBowModel)
-                            if NotFoundsJustNow:
-                                NotFounds.update(set(NotFoundsJustNow))
-
-                            if len(NotFoundsJustNow)>TokenCntInLine/4:
-                                break
-                            OutJsonFSw.write(json.dumps([Pron,Orth,[CxtWds[0],CxtWds[1]],MeanVec.tolist()],ensure_ascii=False)+'\n')
-
-    OutJsonFSw.close()
-    myModule.dump_pickle(SelectedTokenStats,OutJsonFP+'.pickle')
-
-    print('bulk of the processing done, now sorting')
-
-    if SortP:
-        sort_large_file.batch_sort(TmpFP,OutJsonFP)
-        if os.path.getsize(TmpFP)==os.path.getsize(OutJsonFP):
-            os.remove(TmpFP)
-    else:
-        os.rename(TmpFP,OutJsonFP)
 
     
 
@@ -245,7 +262,7 @@ def orth_variety_cond(HomStat,ApproxAmbInds):
    # sort_large_file.batch_sort(TmpFP,OutJsonFP)
    # os.remove(TmpFP)
 
-def approximate_ambiguity(Nums,ThreshRatio=.01):
+def approximate_ambiguity(Nums,ThreshRatio=.05):
     if len(Nums)==1:
         return [0]
     TotalNum=sum(Nums)
@@ -261,37 +278,21 @@ def remove_outliers(OrthsVecs):
     RedOrthsVecsMags=OrthsVecsMags[ReduceMargin:-ReduceMargin]
     return {Orth:Vec for (Orth,Vec,_) in OrthsVecsMags}
 
-def output_text_per_hom(HomsMVecs):
-    FilteredHomsMVecs={}
-    for Hom,OrthsMVecs in HomsMVecs.items():
-        InstanceCnt=sum([len(VecSet) for VecSet in OrthsMVecs.values()])
-        if len(OrthsMVecs)>=2 and InstanceCnt>=50:
-            if InstanceCnt>1000:
-                OrthsMVecs=remove_outliers(OrthsMVecs)
-            for Orths,MVecs in OrthsMVecs.items():
-                for Cntr,MVec in enumerate(MVecs):
-                    FilteredHomsMVecs[Hom+str(Cntr)]=MVec
-
 
 if __name__=='__main__':
     import argparse as ap
     Psr=ap.ArgumentParser()
-    Psr.add_argument('corpus_dir')
-    Psr.add_argument('homstats_fp')
-    Psr.add_argument('model_fp')
+    Psr.add_argument('--corpus-dir',default='/home/yosato/processedData/bcwj/bcwj_simplemecab')
+    Psr.add_argument('--homstats-fp',default='/home/yosato/processedData/bcwj/mecab/LBa_1--LBa_10--LBa_2--LBa_3--LBa_4--LBa_5--others.mecab_homs_plain.pickle')
+    Psr.add_argument('--model-path',default='/home/yosato/processedData/bert/BERT-base_mecab-ipadic-bpe-32k')
+    Psr.add_argument('model_type',default='bert')
     Psr.add_argument('--up-to-percent',default=None,type=int)
     Psr.add_argument('--out-dir',default=None)
-    Psr.add_argument('--text-output',default=False)
+    Psr.add_argument('--text-output',default=True)
     Args=Psr.parse_args()
+    AbortP=False
     if not os.path.isdir(Args.corpus_dir):
-        sys.exit('corpus dir '+Args.corpus_dir+' does not exist\n')
-    print('loading models')
-    HomStats=pickle.load(open(Args.homstats_fp,'br'))
-    Model=gensim.models.Word2Vec.load(Args.model_fp)
-    main(Args.corpus_dir,HomStats,Model,UpToPercent=Args.up_to_percent,OutDir=Args.out_dir)
-    #VecsFP=Args.corpus_fp+'.homvecs.pickle'
-    #print('saving vecs in '+VecsFP)
-    #myModule.dump_pickle(HomsMVecs,VecsFP)
+        print('corpus dir '+Args.corpus_dir+' does not exist\n')
+        AbortP=True
     
-    #if Args.text_output:
-    #    output_text_per_hom()
+    main(Args.corpus_dir,Args.homstats_fp,Args.model_path,Args.model_type,UpToPercent=Args.up_to_percent,OutDir=Args.out_dir)
