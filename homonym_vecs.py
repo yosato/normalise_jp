@@ -3,10 +3,11 @@ import romkan
 import re,pickle,sys,os,imp,json,glob
 from collections import defaultdict
 #sys.path.append('/home/yosato/myProjects/normalise_jp')
-import count_homophones
+import count_homophones,get_embeddings
 from  pythonlib_ys import main as myModule
 from pythonlib_ys import sort_large_file
 imp.reload(count_homophones)
+imp.reload(get_embeddings)
 imp.reload(myModule)
 
 def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,OutDir=None,DoRTextP=True):
@@ -21,71 +22,57 @@ def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,Out
     FPPair=[os.path.join(OutDir,FN) for FN in (OutJsonFN,PickedTokenStatsFN)]
     OutJsonFP=FPPair[0]
 #    print('finding mean vectors for contexts...')
-    myModule.ask_filenoexist_execute(FPPair,get_homs_contexts_mvecs,([SMecabCorpusDir,HomStats,ModelPath,ModelType],{'OutJsonFP':OutJsonFP}))
+    myModule.ask_filenoexist_execute(FPPair,get_homs_vecs,([SMecabCorpusDir,HomStats,ModelPath,ModelType],{'OutJsonFP':OutJsonFP}))
 
     if DoRTextP:
         print('We write out the results in text too...')
         output_text_per_hom(OutJsonFP)
     
 
-def get_homs_contexts_mvecs(CorpusDir,HomStats,ModelType,OutJsonFP,SortP=True):
-    FPs=glob.glob(CorpusDir+'/*.mecabsimple')
-    Unprocessables=set();Omits=set()
-    TmpFP=OutJsonFP+'.tmp'
-    OutJsonFSw=open(TmpFP,'wt')
-    LineCnt=get_linecount0(FPs)
-    print('Total line count: '+str(LineCnt))
-    Unit=LineCnt//100
-    OrthsHomStats=homstats2orthshomstats(HomStats)
-    NotFounds=set();PercUnit=0;TokenCntSoFar=0
-    SelectedTokenStats={};CumCntr==0
-    for CorpusFP in FPs:
-        with open(CorpusFP,'rt') as FSr:
-            CumCntr+=Cntr
-            for Cntr,LiNe in enumerate(FSr):
-    #            if Cntr<1303900:
-    #                continue
-                if not LiNe.strip():
-                    continue
-                CumCntrInside=CumCntr+Cntr
-                if CumCntrInside%1000==0:
-                    print(CumCntr+Cntr)
-                if CumCntrInside%Unit==0:
+def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
+    def check_return_wdtriples(LiNe,PercUnit,Unprocessables):
+                if CumCntrInside!=0 and CumCntrInside%Unitile==0:
                     PercUnit+=1
-                    print(str(CumCntrInside+1)+' or '+str(PercUnit)+'% done')
+                    print(str(PercUnit/(Unit/100))+'%'+' or '+str(CumCntrInside+1)+' sentences done')
 
+                # triple reprs of the sent    
                 WdTriples=[tuple(WdTStr.split(':')) for WdTStr in LiNe.strip().split()]
-                TokenCntInLine=len(WdTriples)
-                if TokenCntInLine<10 or TokenCntInLine>60:
-                    continue
+                # exclude too short sentences
+                if len(WdTriples)<=4:
+                    return None
+                # exclude non well-formed data
                 BadWdTriples={WdT for WdT in WdTriples if len(WdT)!=3}
                 if BadWdTriples:
                     Unprocessables.update(BadWdTriples)
                     if BadWdTriples:
-                        continue
+                        return None
                     else:
                         WdTriples=[WdT for WdT in WdTriples if WdT not in BadWdTriples]
 
-                TokenCntSoFar+=TokenCntInLine
+                return WdTriples,BadWdTriples,PercUnit,Unprocessables
+
+    def get_homonym_inds(WdTriples,SelectedTokenStats,OrthsHomStats,Unprocessables,Omits):            
                 RelvInds=[]
                 for Ind,WdT in enumerate(WdTriples):
                     if WdT in Unprocessables or WdT in Omits:
                         continue
                     Orth,Cat,Pron=WdT
+                    # these pos's are ignored
                     if Cat in ('記号','助詞','助動詞','代名詞') or Pron=='*':
                         continue
                     if Pron in SelectedTokenStats and Orth in SelectedTokenStats[Pron] and SelectedTokenStats[Pron][Orth]>1000:
                         continue
-
+                    # make sure it exists in the stats, should not be necessary, but it is...
                     if Orth in OrthsHomStats:
                         HomStats=OrthsHomStats[Orth]
+                        # select the stats of the right pos
                         HitHomStats=[HomStat for HomStat in HomStats if HomStat.cat==Cat and HomStat.pron==Pron]
                         if len(HitHomStats)!=1:
                             Unprocessables.add(WdT)
                             continue
                         HomStat=HitHomStats[0]
                         ApproxAmbInds=approximate_ambiguity(HomStat.freqs)
-                        if not (HomStat and len(ApproxAmbInds)>=2 and sum(HomStat.freqs)>1000 and orth_variety_cond(HomStat,ApproxAmbInds)):
+                        if not (HomStat and len(ApproxAmbInds)>=2 and sum(HomStat.freqs)>500 and orth_variety_cond(HomStat,ApproxAmbInds)):
                             Omits.add(WdT)
                         else:
                             if Pron not in SelectedTokenStats:
@@ -95,14 +82,53 @@ def get_homs_contexts_mvecs(CorpusDir,HomStats,ModelType,OutJsonFP,SortP=True):
                             else:
                                 SelectedTokenStats[Pron][Orth]+=1
                             RelvInds.append(Ind)
+                return RelvInds,SelectedTokenStats,Omits
+
+            
+    FPs=glob.glob(CorpusDir+'/*.mecabsimple')
+    Unprocessables=set();Omits=set()
+    TmpFP=OutJsonFP+'.tmp'
+    OutJsonFSw=open(TmpFP,'wt')
+    LineCnt=3950000#get_linecount0(FPs)
+    print('Total line count: '+str(LineCnt))
+    Unit=1000
+    Unitile=LineCnt//Unit
+    # this is to be used to select the ones we care about, homonyms
+    OrthsHomStats=homstats2orthshomstats(HomStats)
+
+    if ModelType=='bert':
+        from transformers import BertModel,BertTokenizer
+        from torch import tensor
+        BTsr=BertTokenizer.from_pretrained(ModelPath)
+        BModel=BertModel.from_pretrained(ModelPath)
+        get_embeddings_type=lambda Orths: get_embeddings.get_bert_embeddings(' '.join(Orths),BModel,BTsr)
+    
+    PercUnit=0
+    SelectedTokenStats={};CumCntr=0;Cntr=0
+    for CorpusFP in FPs:
+        with open(CorpusFP,'rt') as FSr:
+            CumCntr+=Cntr
+            for Cntr,LiNe in enumerate(FSr):
+                if not LiNe.strip():
+                    continue
+                CumCntrInside=CumCntr+Cntr
+                Ret=check_return_wdtriples(LiNe,PercUnit,Unprocessables)
+                if Ret is None:
+                    continue
+                else:
+                    WdTriples,BadWdTriples,PercUnit,Unprocessables=Ret
+
+                # real processing starts here, first pick the relevant words
+#                try:
+                RelvInds,SelectedTokenStats,Omits=get_homonym_inds(WdTriples,SelectedTokenStats,OrthsHomStats,Unprocessables,Omits)
 
                 if RelvInds:
                     Orths=[WdT[0] for WdT in WdTriples]
-                    Vecs=ElmoModel.embed_sentence(Orths)
-                    MeanVec=np.mean(Vecs,axis=0)
+                    Vecs=get_embeddings_type(Orths)
+
                     for Ind in RelvInds:
                         Pron=WdTriples[Ind][2]
-                        OutJsonFSw.write(json.dumps([Pron,Ind,Orths,MeanVec.tolist()[Ind]],ensure_ascii=False)+'\n')
+                        OutJsonFSw.write(json.dumps([Pron,Ind,Orths,Vecs[Ind].tolist()],ensure_ascii=False)+'\n')
 
     OutJsonFSw.close()
     myModule.dump_pickle(SelectedTokenStats,OutJsonFP+'.pickle')
@@ -285,7 +311,7 @@ if __name__=='__main__':
     Psr.add_argument('--corpus-dir',default='/home/yosato/processedData/bcwj/bcwj_simplemecab')
     Psr.add_argument('--homstats-fp',default='/home/yosato/processedData/bcwj/mecab/LBa_1--LBa_10--LBa_2--LBa_3--LBa_4--LBa_5--others.mecab_homs_plain.pickle')
     Psr.add_argument('--model-path',default='/home/yosato/processedData/bert/BERT-base_mecab-ipadic-bpe-32k')
-    Psr.add_argument('model_type',default='bert')
+    Psr.add_argument('--model-type',default='bert')
     Psr.add_argument('--up-to-percent',default=None,type=int)
     Psr.add_argument('--out-dir',default=None)
     Psr.add_argument('--text-output',default=True)

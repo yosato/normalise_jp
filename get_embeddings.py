@@ -1,16 +1,17 @@
-from transformers import BertModel,BertTokenizer
 from torch import tensor
 
-def main(Seqs,ModelType,ModelPath):
+def main(Seq,ModelType,ModelPath):
     if ModelType=='bert':
-        Embs=get_bert_embeddings(Seq,ModelPath)
+        from transformers import BertModel,BertTokenizer
+
+        BTsr=BertTokenizer.from_pretrained(ModelPath)
+        BModel=BertModel.from_pretrained(ModelPath)
+        Embs=get_bert_embeddings(Seq,BModel,BTsr)
     return Embs
 
-def get_bert_embeddings(Seq,ModelPath):
-    BTsr=BertTokenizer.from_pretrained(ModelPath)
-    Model=BertModel.from_pretrained(ModelPath)
+def get_bert_embeddings(Seq,BModel,BTsr):
     Toks=BTsr.wordpiece_tokenizer.tokenize(Seq)
-    Embs=Model(BTsr.convert_tokens_to_ids(Toks))[0][0]
+    Embs=BModel(tensor(BTsr.convert_tokens_to_ids(Toks)).unsqueeze(0))[0][0]
     return Embs
 
 
