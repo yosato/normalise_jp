@@ -30,6 +30,15 @@ def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,Out
     
 
 def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
+    def get_write_embeddings(WdTriples,RelvInds,OutJsonFSw):
+                    Orths=[WdT[0] for WdT in WdTriples]
+                    Vecs=get_embeddings_type(Orths)
+
+                    for Ind in RelvInds:
+                        Pron=WdTriples[Ind][2]
+                        OutJsonFSw.write(json.dumps([Pron,Ind,Orths,Vecs[Ind].tolist()],ensure_ascii=False)+'\n')
+
+
     def check_return_wdtriples(LiNe,PercUnit,Unprocessables):
                 if CumCntrInside!=0 and CumCntrInside%Unitile==0:
                     PercUnit+=1
@@ -89,13 +98,13 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
     Unprocessables=set();Omits=set()
     TmpFP=OutJsonFP+'.tmp'
     OutJsonFSw=open(TmpFP,'wt')
-    LineCnt=3950000#get_linecount0(FPs)
+    LineCnt=get_linecount0(FPs)
     print('Total line count: '+str(LineCnt))
     Unit=1000
     Unitile=LineCnt//Unit
     # this is to be used to select the ones we care about, homonyms
     OrthsHomStats=homstats2orthshomstats(HomStats)
-
+    FailedSents=[]
     if ModelType=='bert':
         from transformers import BertModel,BertTokenizer
         from torch import tensor
@@ -123,12 +132,11 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
                 RelvInds,SelectedTokenStats,Omits=get_homonym_inds(WdTriples,SelectedTokenStats,OrthsHomStats,Unprocessables,Omits)
 
                 if RelvInds:
-                    Orths=[WdT[0] for WdT in WdTriples]
-                    Vecs=get_embeddings_type(Orths)
-
-                    for Ind in RelvInds:
-                        Pron=WdTriples[Ind][2]
-                        OutJsonFSw.write(json.dumps([Pron,Ind,Orths,Vecs[Ind].tolist()],ensure_ascii=False)+'\n')
+                    try:
+                        get_write_embeddings(WdTriples,RelvInds,OutJsonFSw)
+                    except:
+                        print(LiNe)
+                        FailedSents.append(LiNe.strip())
 
     OutJsonFSw.close()
     myModule.dump_pickle(SelectedTokenStats,OutJsonFP+'.pickle')
