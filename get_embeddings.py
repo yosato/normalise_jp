@@ -9,10 +9,10 @@ def main(Seq,ModelType,ModelPath):
         Embs=get_bert_embeddings(Seq,BModel,BTsr)
     return Embs
 
-def get_bert_embeddings(Seq,BModel,BTsr):
-    Toks=BTsr.wordpiece_tokenizer.tokenize(Seq)
+def get_bert_embeddings(Orths,BModel,BTsr):
+    Toks=BTsr.wordpiece_tokenizer.tokenize(''.join(Orths))
     Embs=BModel(tensor(BTsr.convert_tokens_to_ids(Toks)).unsqueeze(0))[0][0]
-    return Embs
+    return Embs,Toks
 
 
 if __name__=='__main__':

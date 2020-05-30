@@ -12,9 +12,9 @@ imp.reload(myModule)
 
 def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,OutDir=None,DoRTextP=True):
 #    HomStats,Model=load_models(HomFP,ModelFP)
-
+    print('loading homstats...')
     HomStats=pickle.load(open(Args.homstats_fp,'br'))
-    
+    print('... loaded')
     OutFNStem=os.path.basename(SMecabCorpusDir)+'_contexts_mvecs_'
     OutJsonFN=OutFNStem+ModelType+'.json'
     PickedTokenStatsFN=OutFNStem+'pickedtokenstats.pickle'
@@ -28,15 +28,28 @@ def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,Out
         print('We write out the results in text too...')
         output_text_per_hom(OutJsonFP)
     
-
+def find_new_relvinds(RelvIndOrthPairs,NewTokens):
+    IndPairs=[];Seen=set()
+    for OldInd,RelvOrth in RelvIndOrthPairs:
+        if RelvOrth in Seen:
+            continue
+        if RelvOrth in NewTokens:
+            IndPairs.append((OldInd,NewTokens.index(RelvOrth)))
+            Seen.add(RelvOrth)
+    return IndPairs
+        
 def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
     def get_write_embeddings(WdTriples,RelvInds,OutJsonFSw):
-                    Orths=[WdT[0] for WdT in WdTriples]
-                    Vecs=get_embeddings_type(Orths)
+                    Orths=[Wd[0] for Wd in WdTriples]
+                    RelvIndOrthPairs=[(OldInd,WdT[0]) for (OldInd,WdT) in enumerate(WdTriples) if OldInd in RelvInds]
+                    Vecs,NewTokens=get_embeddings_type(Orths)
+                    
+                    IndPairs=find_new_relvinds(RelvIndOrthPairs,NewTokens)
 
-                    for Ind in RelvInds:
-                        Pron=WdTriples[Ind][2]
-                        OutJsonFSw.write(json.dumps([Pron,Ind,Orths,Vecs[Ind].tolist()],ensure_ascii=False)+'\n')
+                    for OldInd,NewInd in IndPairs:
+                        Pron=WdTriples[OldInd][2]
+                        Output=[Pron,NewInd,NewTokens,Vecs[NewInd].tolist()]
+                        OutJsonFSw.write(json.dumps(Output,ensure_ascii=False)+'\n')
 
 
     def check_return_wdtriples(LiNe,PercUnit,Unprocessables):
@@ -98,9 +111,10 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
     Unprocessables=set();Omits=set()
     TmpFP=OutJsonFP+'.tmp'
     OutJsonFSw=open(TmpFP,'wt')
+    print('counting lines...')
     LineCnt=get_linecount0(FPs)
     print('Total line count: '+str(LineCnt))
-    Unit=1000
+    Unit=100
     Unitile=LineCnt//Unit
     # this is to be used to select the ones we care about, homonyms
     OrthsHomStats=homstats2orthshomstats(HomStats)
@@ -118,25 +132,36 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
         with open(CorpusFP,'rt') as FSr:
             CumCntr+=Cntr
             for Cntr,LiNe in enumerate(FSr):
-                if not LiNe.strip():
+                OldLine=LiNe.strip()
+                if not OldLine:
                     continue
-                CumCntrInside=CumCntr+Cntr
-                Ret=check_return_wdtriples(LiNe,PercUnit,Unprocessables)
-                if Ret is None:
-                    continue
+                if len(OldLine)<400:
+                    Lines=[OldLine]
                 else:
-                    WdTriples,BadWdTriples,PercUnit,Unprocessables=Ret
+                    Lines=re.split(' 、:記号:、 ',OldLine)
+                for Line in Lines:
+                    if len(Line)>350:
+                        continue
+                    LiNe=Line+'\n'
+                    CumCntrInside=CumCntr+Cntr
+                    Ret=check_return_wdtriples(LiNe,PercUnit,Unprocessables)
+                    if Ret is None:
+                        continue
+                    else:
+                        WdTriples,BadWdTriples,PercUnit,Unprocessables=Ret
 
                 # real processing starts here, first pick the relevant words
 #                try:
-                RelvInds,SelectedTokenStats,Omits=get_homonym_inds(WdTriples,SelectedTokenStats,OrthsHomStats,Unprocessables,Omits)
+                    RelvInds,SelectedTokenStats,Omits=get_homonym_inds(WdTriples,SelectedTokenStats,OrthsHomStats,Unprocessables,Omits)
 
-                if RelvInds:
-                    try:
-                        get_write_embeddings(WdTriples,RelvInds,OutJsonFSw)
-                    except:
-                        print(LiNe)
-                        FailedSents.append(LiNe.strip())
+                    if RelvInds:
+                        try:
+                            get_write_embeddings(WdTriples,RelvInds,OutJsonFSw)
+                        except:
+                            print(LiNe)
+                            get_write_embeddings(WdTriples,RelvInds,OutJsonFSw)
+                            
+                      #  FailedSents.append(LiNe.strip())
 
     OutJsonFSw.close()
     myModule.dump_pickle(SelectedTokenStats,OutJsonFP+'.pickle')
