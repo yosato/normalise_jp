@@ -1,16 +1,16 @@
 import numpy as np
 import romkan
-import re,pickle,sys,os,imp,json,glob
+import re,pickle,sys,os,imp,json,glob,datetime
 from collections import defaultdict
 #sys.path.append('/home/yosato/myProjects/normalise_jp')
-import count_homophones,get_embeddings
+import count_homophones,get_embeddings,do_r_text
 from  pythonlib_ys import main as myModule
 from pythonlib_ys import sort_large_file
 imp.reload(count_homophones)
 imp.reload(get_embeddings)
 imp.reload(myModule)
 
-def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,OutDir=None,DoRTextP=True):
+def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,OutDir=None):
 #    HomStats,Model=load_models(HomFP,ModelFP)
     print('loading homstats...')
     HomStats=pickle.load(open(Args.homstats_fp,'br'))
@@ -21,41 +21,70 @@ def main(SMecabCorpusDir,HomFP,ModelPath,ModelType,Window=5,UpToPercent=None,Out
     OutDir=OutDir if OutDir is not None else SMecabCorpusDir
     FPPair=[os.path.join(OutDir,FN) for FN in (OutJsonFN,PickedTokenStatsFN)]
     OutJsonFP=FPPair[0]
-#    print('finding mean vectors for contexts...')
-    myModule.ask_filenoexist_execute(FPPair,get_homs_vecs,([SMecabCorpusDir,HomStats,ModelPath,ModelType],{'OutJsonFP':OutJsonFP}))
 
-    if DoRTextP:
-        print('We write out the results in text too...')
-        output_text_per_hom(OutJsonFP)
-    
-def find_new_relvinds(RelvIndOrthPairs,NewTokens):
-    IndPairs=[];Seen=set()
-    for OldInd,RelvOrth in RelvIndOrthPairs:
-        if RelvOrth in Seen:
-            continue
-        if RelvOrth in NewTokens:
-            IndPairs.append((OldInd,NewTokens.index(RelvOrth)))
-            Seen.add(RelvOrth)
-    return IndPairs
+    get_homs_vecs(SMecabCorpusDir,HomStats,ModelPath,ModelType,OutJsonFP=OutJsonFP)
+#    myModule.ask_filenoexist_execute(OutJsonFP,get_homs_vecs,([SMecabCorpusDir,HomStats,ModelPath,ModelType],{'OutJsonFP':OutJsonFP}))
+
+def find_subst_matches(TgtStr,PotStrs):
+    StartInd=None
+    for Ind,PotStr in enumerate(PotStrs):
+        if TgtStr==PotStr:
+            return Ind,(PotStr,)
+        elif TgtStr.startswith(PotStr):
+            StartInd=Ind
+            FndPotStr=PotStr
+            break
+    if StartInd:    
+        FndPotStrs=[FndPotStr]
+        for i in range(StartInd+1,len(PotStrs)):
+            PotStr=PotStrs[i]
+            FndStr=''.join(FndPotStrs);PotCombStrs=FndStr+PotStr,FndStr+PotStr.replace('##','')
+            if TgtStr in PotCombStrs:
+                FndPotStrs.append(PotStr)
+                return StartInd,tuple(FndPotStrs)
+            else:
+                FndPotStrs.append(PotStr)
+    return None 
         
+            
+    
 def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
     def get_write_embeddings(WdTriples,RelvInds,OutJsonFSw):
-                    Orths=[Wd[0] for Wd in WdTriples]
-                    RelvIndOrthPairs=[(OldInd,WdT[0]) for (OldInd,WdT) in enumerate(WdTriples) if OldInd in RelvInds]
-                    Vecs,NewTokens=get_embeddings_type(Orths)
-                    
-                    IndPairs=find_new_relvinds(RelvIndOrthPairs,NewTokens)
+        def find_new_relvinds(RelvIndOrthPairs,NewTokens):
+            IndPairs=[];Seen=set();MissedRelvOrths=set()
+            for OldInd,RelvOrth in RelvIndOrthPairs:
+                if RelvOrth in Seen:
+                    continue
+                if RelvOrth in NewTokens:
+                    IndPairs.append((OldInd,NewTokens.index(RelvOrth),1))
+                    Seen.add(RelvOrth)
+                else:
+                    Match=find_subst_matches(RelvOrth,NewTokens)
+                    if Match:
+                        IndPairs.append((OldInd,Match[0],len(Match[1])))
+            return IndPairs
 
-                    for OldInd,NewInd in IndPairs:
-                        Pron=WdTriples[OldInd][2]
-                        Output=[Pron,NewInd,NewTokens,Vecs[NewInd].tolist()]
-                        OutJsonFSw.write(json.dumps(Output,ensure_ascii=False)+'\n')
+        Orths=[Wd[0] for Wd in WdTriples]
+        RelvIndOrthPairs=[(OldInd,WdT[0]) for (OldInd,WdT) in enumerate(WdTriples) if OldInd in RelvInds]
+        Vecs,NewTokens=get_embeddings_type(Orths)
 
-
-    def check_return_wdtriples(LiNe,PercUnit,Unprocessables):
+        IndPairs=find_new_relvinds(RelvIndOrthPairs,NewTokens)
+        for OldInd,NewInd,MatchLen in IndPairs:
+            Pron=WdTriples[OldInd][2];Cat=WdTriples[OldInd][1]
+            Vec=Vecs[NewInd] if MatchLen==1 else np.mean([Vec.detach().numpy() for Vec in Vecs[NewInd:NewInd+MatchLen]],axis=0)
+            Output=[Pron+':'+Cat,NewInd,MatchLen,NewTokens,Vec.tolist()]
+            OutJsonFSw.write(json.dumps(Output,ensure_ascii=False)+'\n')
+        
+    def check_return_wdtriples(LiNe,PercUnit,Unprocessables,PrvFinishedDT):
                 if CumCntrInside!=0 and CumCntrInside%Unitile==0:
                     PercUnit+=1
                     print(str(PercUnit/(Unit/100))+'%'+' or '+str(CumCntrInside+1)+' sentences done')
+                    FinishedDT=datetime.datetime.now()
+                    TDelta=FinishedDT-PrvFinishedDT
+                    print(TDelta)
+
+                else:
+                    FinishedDT=PrvFinishedDT
 
                 # triple reprs of the sent    
                 WdTriples=[tuple(WdTStr.split(':')) for WdTStr in LiNe.strip().split()]
@@ -71,7 +100,7 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
                     else:
                         WdTriples=[WdT for WdT in WdTriples if WdT not in BadWdTriples]
 
-                return WdTriples,BadWdTriples,PercUnit,Unprocessables
+                return WdTriples,BadWdTriples,PercUnit,Unprocessables,FinishedDT
 
     def get_homonym_inds(WdTriples,SelectedTokenStats,OrthsHomStats,Unprocessables,Omits):            
                 RelvInds=[]
@@ -112,7 +141,7 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
     TmpFP=OutJsonFP+'.tmp'
     OutJsonFSw=open(TmpFP,'wt')
     print('counting lines...')
-    LineCnt=get_linecount0(FPs)
+    LineCnt=3951450#get_linecount0(FPs)
     print('Total line count: '+str(LineCnt))
     Unit=100
     Unitile=LineCnt//Unit
@@ -126,7 +155,7 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
         BModel=BertModel.from_pretrained(ModelPath)
         get_embeddings_type=lambda Orths: get_embeddings.get_bert_embeddings(' '.join(Orths),BModel,BTsr)
     
-    PercUnit=0
+    PercUnit=0;PrvFinishedDT=datetime.datetime.now()
     SelectedTokenStats={};CumCntr=0;Cntr=0
     for CorpusFP in FPs:
         with open(CorpusFP,'rt') as FSr:
@@ -144,11 +173,11 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
                         continue
                     LiNe=Line+'\n'
                     CumCntrInside=CumCntr+Cntr
-                    Ret=check_return_wdtriples(LiNe,PercUnit,Unprocessables)
+                    Ret=check_return_wdtriples(LiNe,PercUnit,Unprocessables,PrvFinishedDT)
                     if Ret is None:
                         continue
                     else:
-                        WdTriples,BadWdTriples,PercUnit,Unprocessables=Ret
+                        WdTriples,BadWdTriples,PercUnit,Unprocessables,FinishedDT=Ret
 
                 # real processing starts here, first pick the relevant words
 #                try:
@@ -178,24 +207,6 @@ def get_homs_vecs(CorpusDir,HomStats,ModelPath,ModelType,OutJsonFP,SortP=True):
 
         
 
-def output_text_per_hom(OutJsonFP,Max=3000):
-        TxtDir=os.path.join(os.path.dirname(OutJsonFP),os.path.basename(OutJsonFP)+'_txt')
-        if not os.path.isdir(TxtDir):
-            os.mkdir(TxtDir)
-        CntSoFar=0;Cntr=0
-        with open(OutJsonFP) as FSr:
-            #print('retrieving homvecs for '+Hom+'...')
-            while FSr or Cntr<Max:
-                FSr,OrthsVecs,Hom,Cnt=get_hom_in_file(FSr,OutJsonFP,FstPosition=CntSoFar)
-                OrthVarCnt=len(OrthsVecs)
-                if OrthVarCnt>=2 and Cnt>100:
-                    print('For '+Hom+', we found '+str(OrthVarCnt)+' orths, '+str(Cnt)+' items, now writing out...')
-                    RomHom=romkan.to_roma(Hom)
-                    OutHomFP=os.path.join(TxtDir,'homvecs_'+RomHom)
-                    with open(OutHomFP,'wt') as FSw:
-                        FSw.write(stringify_hom_vecs(OrthsVecs))
-                        print('... done, fp: '+OutHomFP)
-                    CntSoFar+=Cnt;Cntr+=1
 
 def jump_to_linum(FSr,LiNum):
     for Cntr,LiNe in enumerate(FSr):
@@ -219,19 +230,7 @@ def json_sorted_p(JsonFP,UpTo=50000):
                     return False
         return True
 
-def get_hom_in_file(FSr,JsonFP,UpTo=100000,FstPosition=0,AssumeSortedP=False):
-    #print('trying to find homs for '+TgtHom)
-   # Fnd=False;FndCnt=0
-    OrthsVecs=defaultdict(list)
- #    TgtHomRegex='["'+TgtHom
-    FSr,Chunk,LineCnt,_=myModule.pop_chunk_from_stream(FSr,Pattern=',',Type='cont')
-    for Line in Chunk.strip().split('\n'):
-        HomVecs=json.loads(Line)
-        #assert(HomVecs[0]==TgtHom)
-        Orth=HomVecs[2][HomVecs[1]]
-        OrthsVecs[Orth].append(HomVecs[3])
- #   print(str(Cntr+1)+' found')
-    return FSr,OrthsVecs,HomVecs[0],LineCnt
+
 
                     
 def generate_homvecs_json(FSr):
@@ -246,17 +245,6 @@ def generate_homvecs_json(FSr):
         else:
             yield Vecs
             
-                
-def stringify_hom_vecs(OrthsVecs,UpToPerOrth=1000):
-    Str=''
-    for OrthCntr,(Orth,Vecs) in enumerate(OrthsVecs.items()):
-        for VecCntr,Vec in enumerate(Vecs):
-            if VecCntr>=UpToPerOrth:
-                break
-            Line=Orth+str(OrthCntr)+'_'+str(VecCntr)+'\t'+'\t'.join([str(Num) for Num in Vec])
-            Str+=Line+'\n'
-            
-    return Str
         
                     
 def context2vec(CxtVecs):
@@ -341,9 +329,10 @@ def remove_outliers(OrthsVecs):
 if __name__=='__main__':
     import argparse as ap
     Psr=ap.ArgumentParser()
-    Psr.add_argument('--corpus-dir',default='/home/yosato/processedData/bcwj/bcwj_simplemecab')
-    Psr.add_argument('--homstats-fp',default='/home/yosato/processedData/bcwj/mecab/LBa_1--LBa_10--LBa_2--LBa_3--LBa_4--LBa_5--others.mecab_homs_plain.pickle')
-    Psr.add_argument('--model-path',default='/home/yosato/processedData/bert/BERT-base_mecab-ipadic-bpe-32k')
+    Home=os.getenv('HOME')
+    Psr.add_argument('--corpus-dir',default=Home+'/processedData/bcwj/bcwj_simplemecab')
+    Psr.add_argument('--homstats-fp',default=Home+'/processedData/bcwj/mecab/LBa_1--LBa_10--LBa_2--LBa_3--LBa_4--LBa_5--others.mecab_homs_plain.pickle')
+    Psr.add_argument('--model-path',default=Home+'/processedData/bert/BERT-base_mecab-ipadic-bpe-32k')
     Psr.add_argument('--model-type',default='bert')
     Psr.add_argument('--up-to-percent',default=None,type=int)
     Psr.add_argument('--out-dir',default=None)
