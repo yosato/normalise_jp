@@ -1,6 +1,7 @@
 import os,sys,imp,time,romkan,copy,re,functools,itertools
 from collections import OrderedDict
 from collections import defaultdict
+from probability import probability
 #from mecabtools import mecabtools
 #imp.reload(mecabtools)
 
@@ -15,7 +16,7 @@ imp.reload(mecabtools)
 from probability import probability
 imp.reload(probability)
 
-def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False,FreqWdFP=None,UnnormalisableMarkP=True,ProbExemplarFP=None,OutFP=None,Fts=None,Debug=0):
+def main0(LexFPs,MecabCorpusFPs,CorpusOnly=False ,FreqWdFP=None,UnnormalisableMarkP=True,ProbExemplarFP=None,OutFP=None,Fts=None,Debug=0):
     for FP in (FreqWdFP,ProbExemplarFP):
         if FP is not None and not os.path.isfile(FreqWdFP):
             sys.exit(FP+' does not exist\n')
@@ -160,34 +161,91 @@ def get_clustered_homs(LexFPs,*Args,**KWArgs):
             sys.stderr.write('\n\nfinding homonym clusters with the lexicon '+LexFP+'\n\n')
         ClusteredH.extend(get_clustered_homs_file(LexFP,*Args,**KWArgs))
     return ClusteredH
+
+def compact_lines(Lines,ExcludeInds=[]):
+    LinesFreqs=defaultdict(int)
+    for Line in Lines:
+        Line=','.join([El for (Ind,El) in enumerate(Line.split(',')) if Ind not in ExcludeInds] )
+        LinesFreqs[Line]+=1
         
-def get_clustered_homs_file(LexFP,RelvFts,Frequents=set(),ProbExemplars={},OutFP=None,Debug=0):
-    RelvInds=mecabtools.fts2inds(RelvFts,CorpusOrDic='dic')
+    return LinesFreqs
+
+def get_clustered_homs_files(FPs,RelvFts,CorpusOrDic='dic',Frequents=set(),ProbExemplars={},OutFP=None,Debug=0):
+    def get_ftsvals_line_counter(FPs,RelvFts,CorpusOrDic,ExcludeInds=[9]):
+        def reduce_cluster(LinesLinums,ExcludeInds):
+            NewLinesLinums=defaultdict(list)
+            for (Line,Linums) in LinesLinums.items():
+                ReducedLine=','.join([El for (Ind,El) in enumerate(Line.split(',')) if Ind not in ExcludeInds])
+                NewLinesLinums[ReducedLine]+=Linums
+            NewLinesLinums={Line:sorted(Linums) for (Line,Linums) in NewLinesLinums.items()}
+            return NewLinesLinums
+                
+        print('gathering data from files... there are '+str(len(FPs))+' files')
+        CumFtLines={}
+        FPs=sorted(FPs)
+        for Cntr,FP in enumerate(FPs):
+            SameFtClusters=mecabtools.cluster_samefeat_lines(FP,RelvFts,IgnoreFtsVals={'pronunciation':'*','cat':'記号'},CorpusOrDic=CorpusOrDic)
+            if (Cntr+1)%50==0:
+                print(str(Cntr+1)+' files done')
+            for (Ft,LinesLinums) in SameFtClusters.items():
+                if ExcludeInds:
+                    LinesLinums=reduce_cluster(LinesLinums,ExcludeInds)
+                for (Line,Linums) in LinesLinums.items():
+                    if Ft not in CumFtLines:
+                        CumFtLines[Ft]={Line:len(Linums)}
+                    else:
+                        if Line not in CumFtLines[Ft]:
+                            CumFtLines[Ft][Line]=len(Linums)
+                        else:
+                            CumFtLines[Ft][Line]+=len(Linums)
+        return CumFtLines
+
+    #RelvInds=mecabtools.fts2inds(RelvFts,CorpusOrDic=CorpusOrDic)
     if Debug:
         print('doing the raw clustering')
-    FtLines={ Ft:Lines for (Ft,Lines) in mecabtools.cluster_samefeat_lines(LexFP,RelvInds).items() if len(Lines)>=2 and Ft[-1]!='*' }
-
-    ClusteredHs=[]
-    MSs,Consts=None,myModule.prepare_progressconsts(FtLines)
-    for Cntr,(FtSet,Lines) in enumerate(FtLines.items()):
-        if Debug and Cntr+1%100==0:
+    CumFtLines=get_ftsvals_line_counter(FPs,RelvFts,CorpusOrDic)
+    sys.stdout.write('cluster count: '+str(len(CumFtLines))+'\n')
+    ClusteredHs=[];Errors=[]
+    MSs,Consts=None,myModule.prepare_progressconsts(CumFtLines)
+    for Cntr,(FtSet,LinesFreqs) in enumerate(CumFtLines.items()):
+        if Cntr+1%10==0:
             MSs=myModule.prepare_progressconsts(MSs,Cntr,Consts)
-        MWds=[]
-        for Line in Lines:
-            MWd= mecabtools.mecabline2mecabwd(Line,CorpusOrDic='dic')
-            #MWd.summary()
-            MWds.append(MWd)
-        if MWd.cat!='名詞' and not any(MWd.lemma in Frequents for MWd in MWds):
+        if len(LinesFreqs)==1:
             continue
+        FreqfilteredMWds=[]
+        for Line,Freq in LinesFreqs.items():
+            try:
+                MWd= mecabtools.mecabline2mecabwd(Line,Freq=Freq,CorpusOrDic=CorpusOrDic)
+                if MWd.freq>=4:
+                    FreqfilteredMWds.append(MWd)
+                #MWd.summary()
+            except:
+#                mecabtools.mecabline2mecabwd(Line,CorpusOrDic=CorpusOrDic)
+                print('Line '+Line+' failed')
+        if len(FreqfilteredMWds)>=2:
+            if len(FreqfilteredMWds)>=6:
+                FreqfilteredMWds=sorted(FreqfilteredMWds,key=lambda Wd:Wd.freq,reverse=True)[:5]
+            try:
+                try:
+                    myCH=ClusteredHomonyms(FreqfilteredMWds,RelvFts,ExemplarDict=ProbExemplars)
+                except:
+                    ClusteredHomonyms(FreqfilteredMWds,RelvFts,ExemplarDict=ProbExemplars)
+                filter_condition=lambda CH:all([CH.distrib.totalocc>30,CH.entropy>0.45,CH.cluster_on['subcat']!='固有名詞']) 
+                if filter_condition(myCH):
+                    ClusteredHs.append(myCH)
+           
+            except:
+                print('problem occurred for '+Line)
+                Errors.append(Line)
+                #ClusteredHomonyms(FreqfilteredMWds,RelvFts,ExemplarDict=ProbExemplars)
+            
+#        if MWd.cat!='名詞' and not any(MWd.lemma in Frequents for MWd in FreqfilteredMWds):
+ #           continue
         #FtSetLabeled=list(zip(RelvFts,FtSet))
-        if (Debug==1 and Cntr%50==0) or Debug>=2 :
-            sys.stderr.write(' '.join([MWd.orth for MWd in MWds])+'\n')
-        try:
-            myCHs=ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
-        except:
-            ClusteredHomonyms(MWds,RelvFts,ExemplarDict=ProbExemplars)
-        ClusteredHs.append(myCHs)
-    return ClusteredHs
+  #      if (Debug==1 and Cntr%50==0) or Debug>=2 :
+   #         sys.stderr.write(' '.join([MWd.orth for MWd in FreqfilteredMWds])+'\n')
+
+    return ClusteredHs,Errors
 
     
 def collect_freq_wds(FreqWdFP,RankUpTo,HiraganaOnly=False):
@@ -216,24 +274,26 @@ class ClusteredHomonyms:
             self.cluster_on=ClusterOn
             self.hiragana_rendering=jp_morph.kana2kana(self.cluster_on['pronunciation'])
             self.cluster_str=','.join([Val for (_,Val) in self.cluster_on.items() ])
-            self.all_words=MecabWds
-            (KanaC,KanjiCs)=self.cluster_homonyms(self.all_words)
-            self.kana_cluster=KanaC
-            self.kana_lemma='unknown' if not self.kana_cluster else self.kana_cluster[0].lemma
-            self.kanji_clusters=KanjiCs
-            self.kanji_tops=[KanjiC[0] for KanjiC in self.kanji_clusters]
+            self.all_words_freqsorted=sorted(MecabWds,key=lambda Wd:Wd.freq,reverse=True)
+            self.cluster_homonyms()
+
             # exemplar is dynamically set with set_exemplar
             #self.exemplar=self.set_exemplar(Exemplars) if Exemplars else None
             #self.interkanji_dist=InterkanjiDist
             self.exemplar=False
-            ReprType,ReprWds=self.pick_representative(ExemplarDict)
-            self.represent_wds=ReprWds
-            self.represent_type=ReprType
+           # ReprType,ReprWds=self.pick_representative(ExemplarDict)
+           # self.represent_wds=ReprWds
+           # self.represent_type=ReprType
+           
 
         else:
             self.homonymity_check(MecabWds)
             sys.exit('\nhomonimity violated\n')
-
+            
+    def add_word(self,Wd):
+        self.all_words_freqsorted.append(Wd)
+        self.cluster_homonyms()
+        
     def special_kana_exemplar_p(self):
         # いる　なる　やる　ある only for now
         Specials={'いる':{'infpat':'一段'},'なる':{'cat':'動詞'},'やる':{'cat':'動詞'},'ある':{'cat':'動詞'}}
@@ -254,7 +314,7 @@ class ClusteredHomonyms:
             ExemplarP=False
             if ExemplarDict and self.kana_lemma in ExemplarDict.keys():
                 ExemplarStr=ExemplarDict[self.kana_lemma]
-                Exemplars=[Wd for Wd in self.all_words if Wd.lemma==ExemplarStr]
+                Exemplars=[Wd for Wd in self.all_words_freqsorted if Wd.lemma==ExemplarStr]
                 if Exemplars:
                     ExemplarP=True
 
@@ -297,22 +357,24 @@ class ClusteredHomonyms:
             PrvPron=MecabWd.pronunciation
         return Bool
     
-    def cluster_homonyms(self,MecabWds,SortP=False):
-        KanaCluster=[ Hom  for Hom in MecabWds if myModule.all_of_chartypes_p(Hom.orth,['hiragana','katakana','roman'],Exceptions=['〜']) ]
+    def cluster_homonyms(self,SortP=False):
+        KanaCluster=[ Ind  for (Ind,Hom) in enumerate(self.all_words_freqsorted) if myModule.all_of_chartypes_p(Hom.orth,['hiragana','katakana','roman'],Exceptions=['〜']) ]
         if SortP:
             KanaCluster=sorted(KanaCluster,key=lambda x:x.count,reverse=True)
 
         KanjiClusters=[]
-        for Cntr,Hom in enumerate(set(MecabWds)-set(KanaCluster)):
-            if Cntr==0:
-                KanjiClusters.append([Hom])
+        for Cntr,Hom in enumerate(self.all_words_freqsorted):
+            if Cntr in KanaCluster:
+                continue
+            if KanjiClusters==[]:
+                KanjiClusters.append([Cntr])
             else:
                 for Cluster in KanjiClusters:
-                    if homonympair_identical_p(Cluster[-1],Hom):
-                        Cluster.append(Hom)
+                    if homonympair_identical_p(self.all_words_freqsorted[Cluster[-1]],Hom):
+                        Cluster.append(Cntr)
                         break
                 else:
-                    KanjiClusters.append([Hom])
+                    KanjiClusters.append([Cntr])
 
         if SortP:
             # sorting, inside a kanji cluster
@@ -320,9 +382,18 @@ class ClusteredHomonyms:
             # sorting, between clusters
             if len(KanjiClusters)>=2:
                 KanjiClusters=sorted( KanjiClusters, key=lambda x:x[0].count, reverse=True )
-#        InterClusterDist=probability.DiscDist({ KanjiCluster[0]:KanjiCluster[0].count for KanjiCluster in KanjiClusters },Smooth=True)
-        
-        return KanaCluster,KanjiClusters
+
+#        Dist={}
+ #       for Cl in ([] if not KanaCluster else [KanaCluster])+KanjiClusters:
+  #          ClFreq=sum(Wd.freq for Wd in Cl)
+   #         Dist[Cl[0].orth]=ClFreq
+        self.distrib=probability.DiscDist({Wd.orth:Wd.freq for Wd in self.all_words_freqsorted})
+        self.entropy=self.distrib.entropy()
+        self.kana_cluster=KanaCluster
+#        self.kana_lemma='unknown' if not self.kana_cluster else self.kana_cluster[0].lemma
+        self.kanji_clusters=KanjiClusters
+        self.kanji_tops=[KanjiC[0] for KanjiC in self.kanji_clusters] 
+#        return KanaCluster,KanjiClusters
     #,InterClusterDist
 
     def order_clusters(self,Criterion='cost'):
@@ -375,6 +446,8 @@ class ClusteredHomonyms:
   #              LineElsIKD.append(Evt.orth+str(Prob))
         #Lines.append('kanji-conversion ratio '+' '.join(LineElsIKD))
         return '\n'.join(Lines)
+
+    
 
 def larger_smaller(El1,El2,Lambda):
     Figures=Lambda(El1),Lambda(El2)
@@ -693,7 +766,7 @@ def main():
     import argparse,glob
 
     APsr=argparse.ArgumentParser()
-    APsr.add_argument('-l','--lexicon-dir',required=True)
+    APsr.add_argument('-l','--lexicon-dir')
     APsr.add_argument('mecab_corpus_dir')
     APsr.add_argument('--debug',type=int,default=0)
     APsr.add_argument('--previous-clusteredhoms',default=None)
@@ -703,6 +776,7 @@ def main():
     APsr.add_argument('--output-text',action='store_true')
     APsr.add_argument('-f','--freq-word-fp')
     APsr.add_argument('-e','--exemplar-fp')
+    APsr.add_argument('--mecab-ext',default='mecab')
     
     Args=APsr.parse_args()
 
@@ -728,7 +802,7 @@ def main():
             else:
                 sys.exit('AssistFP '+FP+' does not exist')
         
-    main0(FPSets[0],FPSets[1],FreqWdFP=Args.freq_word_fp,ProbExemplarFP=Args.exemplar_fp,UnnormalisableMarkP=not Args.unnormalisable_unmark)
+    main(FPSets[0],FreqWdFP=Args.freq_word_fp,ProbExemplarFP=Args.exemplar_fp,UnnormalisableMarkP=not Args.unnormalisable_unmark)
 
 
 
