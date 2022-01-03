@@ -3,17 +3,20 @@ import sys,os,imp,glob,pickle
 
 imp.reload(normalise_mecab)
 
-def main(FPs):
-    return normalise_mecab.get_clustered_homs_files(FPs,['cat','subcat','subcat2','infpat','pronunciation'],CorpusOrDic='corpus')
+def main(FPs,validateP=True):
+    return normalise_mecab.get_clustered_homs_files(FPs,['cat','subcat','subcat2','infpat','pronunciation'],FileValidateP=validateP,CorpusOrDic='corpus')
 
 if __name__=='__main__':
-    InDir=sys.argv[1]
-    OutDir=sys.argv[2]
-    FPs=[]
-    for FType in ['TKC','KYT','KSJ']:
-        FPs.extend(glob.glob(InDir+'/'+FType+'*.txt'))
+    import argparse
+    psr=argparse.ArgumentParser()
+    psr.add_argument('input_dir')
+    psr.add_argument('--output-dir')
+    myArgs=psr.parse_args()
+    if not myArgs.output_dir:
+        myArgs.output_dir=myArgs.input_dir
+    FPs=glob.glob(myArgs.input_dir+'/*.mecab')
     if FPs:
-        CHs=main(FPs)
-        with open(os.path.join(OutDir,'clustered_homs.pickle'),'bw') as PickleFSw:
+        CHs=main(FPs,validateP=False)
+        with open(os.path.join(myArgs.output_dir,'clustered_homs.pickle'),'bw') as PickleFSw:
             pickle.dump(CHs,PickleFSw)
         
